@@ -4,8 +4,14 @@ import pandas as pd
 from openai import OpenAI
 
 # ==============================================================================
-# 0. 客户端设置：连接到 DeepSeek API
+# 0. 配置和客户端设置
 # ==============================================================================
+
+# 定义输出目录 - 确保与main.py中的outputs目录一致
+OUTPUT_DIR = "outputs"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# 客户端设置：连接到 DeepSeek API
 try:
     # 确保你已经设置了环境变量 DEEPSEEK_API_KEY
     client = OpenAI(
@@ -80,14 +86,14 @@ def preprocess_vehicle_data(filepath: str, point_type: str = None, start_time: s
             ]
             
         filtered_rows = len(df)
-        output_filename = "filtered_" + os.path.splitext(os.path.basename(filepath))[0] + ".csv"
+        output_filename = os.path.join(OUTPUT_DIR, "filtered_" + os.path.splitext(os.path.basename(filepath))[0] + ".csv")
         df.to_csv(output_filename, index=False)
         
         result = {
             "status": "success",
             "original_rows": original_rows,
             "filtered_rows": filtered_rows,
-            "output_filepath": output_filename,
+            "output_filepath": os.path.basename(output_filename),  # 只返回文件名
             "filters_applied": {"point_type": point_type, "time_range": [start_time, end_time], "bbox": bbox}
         }
         
@@ -107,6 +113,10 @@ def kmeans_cluster(input_filepath: str, n_clusters: int = 8, output_shapefile: s
     """
     print(f"--- Python函数 `kmeans_cluster` 被执行 ---")
     print(f"参数: input_filepath='{input_filepath}', n_clusters={n_clusters}, output_shapefile='{output_shapefile}'")
+
+    # 确保output_shapefile保存到outputs目录
+    if not os.path.dirname(output_shapefile):
+        output_shapefile = os.path.join(OUTPUT_DIR, output_shapefile)
 
     def _find_coordinate_columns(df):
         """
@@ -169,11 +179,22 @@ def kmeans_cluster(input_filepath: str, n_clusters: int = 8, output_shapefile: s
         # 保存为Shapefile
         gdf.to_file(output_shapefile, driver='ESRI Shapefile')
 
+        # 收集所有生成的 Shapefile 相关文件（返回相对路径）
+        base_name = os.path.splitext(output_shapefile)[0]
+        shapefile_extensions = ['.shp', '.shx', '.dbf', '.prj', '.cpg']
+        generated_shapefile_files = []
+        for ext in shapefile_extensions:
+            file_path = base_name + ext
+            if os.path.exists(file_path):
+                # 只返回文件名，不包含路径
+                generated_shapefile_files.append(os.path.basename(file_path))
+
         # 准备结果摘要
         cluster_summary = df['cluster'].value_counts().to_dict()
         result = {
             "status": "success",
-            "output_filepath": output_shapefile,
+            "output_filepath": os.path.basename(output_shapefile), # 只返回文件名
+            "generated_files": generated_shapefile_files, # 添加所有相关文件的列表
             "n_clusters": n_clusters,
             "cluster_point_counts": cluster_summary,
             "coordinate_columns_used": {"longitude": longitude_col, "latitude": latitude_col}
@@ -196,6 +217,10 @@ def create_heatmap(input_filepath: str, output_image_path: str = "heatmap.png", 
     """
     print(f"--- Python函数 `create_heatmap` 被执行 ---")
     print(f"参数: input_filepath='{input_filepath}', output_image_path='{output_image_path}', map_title='{map_title}'")
+
+    # 确保output_image_path保存到outputs目录
+    if not os.path.dirname(output_image_path):
+        output_image_path = os.path.join(OUTPUT_DIR, output_image_path)
 
     def _find_coordinate_columns(df):
         """
@@ -299,7 +324,7 @@ def create_heatmap(input_filepath: str, output_image_path: str = "heatmap.png", 
 
         result = {
             "status": "success",
-            "output_image_path": output_image_path,
+            "output_image_path": os.path.basename(output_image_path),  # 只返回文件名
         }
 
     except ImportError as e:
@@ -320,6 +345,10 @@ def create_gif_from_images(image_files: list, output_gif_path: str = "animated_r
     print(f"--- Python函数 `create_gif_from_images` 被执行 ---")
     print(f"参数: image_files={image_files}, output_gif_path='{output_gif_path}', fps={fps}")
 
+    # 确保output_gif_path保存到outputs目录
+    if not os.path.dirname(output_gif_path):
+        output_gif_path = os.path.join(OUTPUT_DIR, output_gif_path)
+
     try:
         from PIL import Image
 
@@ -339,7 +368,7 @@ def create_gif_from_images(image_files: list, output_gif_path: str = "animated_r
             loop=0
         )
         
-        result = {"status": "success", "output_gif_path": output_gif_path, "image_count": len(frames)}
+        result = {"status": "success", "output_gif_path": os.path.basename(output_gif_path), "image_count": len(frames)}  # 只返回文件名
 
     except ImportError:
         result = {"status": "error", "message": "Missing required library: Pillow (PIL). Please install it."}
@@ -360,6 +389,10 @@ def visualize_clusters(input_shapefile: str, output_image_path: str = "cluster_v
     """
     print(f"--- Python函数 `visualize_clusters` 被执行 ---")
     print(f"参数: input_shapefile='{input_shapefile}', output_image_path='{output_image_path}', map_title='{map_title}'")
+
+    # 确保output_image_path保存到outputs目录
+    if not os.path.dirname(output_image_path):
+        output_image_path = os.path.join(OUTPUT_DIR, output_image_path)
 
     try:
         import geopandas as gpd
@@ -409,7 +442,7 @@ def visualize_clusters(input_shapefile: str, output_image_path: str = "cluster_v
         plt.savefig(output_image_path, dpi=300, bbox_inches='tight')
         plt.close(fig)
 
-        result = {"status": "success", "output_image_path": output_image_path}
+        result = {"status": "success", "output_image_path": os.path.basename(output_image_path)}  # 只返回文件名
 
     except ImportError as e:
         result = {"status": "error", "message": f"Missing required library: {e}. Please install matplotlib-scalebar."}
@@ -597,6 +630,8 @@ def run_agent_conversation(user_prompt: str, messages: list = None):
                     for key, value in response_data.items():
                         if 'path' in key and isinstance(value, str):
                             generated_files.append(value)
+                        elif key == 'generated_files' and isinstance(value, list):
+                            generated_files.extend(value)
                     
                     if response_data.get("status") == "error":
                         print(f"❌ 函数执行失败: {response_data.get('message')}")

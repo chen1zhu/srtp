@@ -33,6 +33,8 @@ conversations: Dict[str, List[Dict]] = {}
 # 创建上传文件目录
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+#创建下载文件目录
+os.makedirs("outputs",exist_ok=True)
 
 # --- 请求和响应模型 ---
 
@@ -167,7 +169,7 @@ async def continue_chat(
 
 # --- 静态文件服务 ---
 # 挂载静态文件目录，用于提供生成的图片、shp等文件
-app.mount("/outputs", StaticFiles(directory="."), name="outputs")
+app.mount("/outputs", StaticFiles(directory="./outputs"), name="outputs")
 # 挂载上传文件目录，用于提供上传的文件
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 

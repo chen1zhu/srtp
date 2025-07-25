@@ -142,6 +142,67 @@ function SimpleAIChat() {
     setInput('');
   };
 
+  // 下载单个文件
+  const downloadFile = async (fileUrl: string, fileName: string) => {
+    try {
+      const response = await fetch(fileUrl);
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('下载文件失败:', error);
+    }
+  };
+
+  // 批量下载相关文件（主要针对shp文件）
+  const downloadRelatedFiles = async (files: string[]) => {
+    // 找出所有shp相关文件
+    const shpFiles = files.filter(file => {
+      const fileName = file.split('/').pop() || file;
+      return fileName.toLowerCase().match(/\.(shp|shx|dbf|prj|cpg)$/);
+    });
+    
+    if (shpFiles.length > 0) {
+      // 获取基础文件名（不含扩展名）
+      const baseNames = new Set(
+        shpFiles.map(file => {
+          const fileName = file.split('/').pop() || file;
+          return fileName.replace(/\.(shp|shx|dbf|prj|cpg)$/i, '');
+        })
+      );
+      
+      // 为每个基础名称下载所有相关文件
+      for (const baseName of baseNames) {
+        const relatedFiles = shpFiles.filter(file => {
+          const fileName = file.split('/').pop() || file;
+          return fileName.toLowerCase().startsWith(baseName.toLowerCase());
+        });
+        
+        // 逐个下载相关文件
+        for (const file of relatedFiles) {
+          const fileName = file.split('/').pop() || file;
+          await downloadFile(file, fileName);
+          // 添加小延迟避免浏览器限制
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+    } else {
+      // 如果没有shp文件，就下载所有文件
+      for (const file of files) {
+        const fileName = file.split('/').pop() || file;
+        await downloadFile(file, fileName);
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+  };
+
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       {/* 头部 */}
@@ -201,21 +262,41 @@ function SimpleAIChat() {
                 {/* 显示生成的文件 */}
                 {message.generatedFiles && message.generatedFiles.length > 0 && (
                   <div className="mt-2 pt-2 border-t border-gray-200">
-                    <p className="text-xs text-gray-600 mb-1">生成的文件:</p>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs text-gray-600">生成的文件:</p>
+                      {message.generatedFiles.length > 1 && (
+                        <button
+                          onClick={() => downloadRelatedFiles(message.generatedFiles!)}
+                          className="text-xs bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600 transition-colors"
+                          title="一键下载所有文件"
+                        >
+                          📦 打包下载
+                        </button>
+                      )}
+                    </div>
                     <div className="space-y-1">
                       {message.generatedFiles.map((file, index) => {
                         const fileName = file.split('/').pop() || file;
                         const isImage = fileName.toLowerCase().match(/\.(png|jpg|jpeg|gif)$/);
                         return (
                           <div key={index} className="text-xs">
-                            <a 
-                              href={file} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="text-blue-600 hover:text-blue-800 underline"
-                            >
-                              📁 {fileName}
-                            </a>
+                            <div className="flex items-center justify-between">
+                              <a 
+                                href={file} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:text-blue-800 underline flex-1"
+                              >
+                                📁 {fileName}
+                              </a>
+                              <button
+                                onClick={() => downloadFile(file, fileName)}
+                                className="ml-2 text-xs bg-gray-100 text-gray-700 px-1 py-0.5 rounded hover:bg-gray-200 transition-colors"
+                                title="下载此文件"
+                              >
+                                ⬇️
+                              </button>
+                            </div>
                             {isImage && (
                               <div className="mt-1">
                                 <img 
