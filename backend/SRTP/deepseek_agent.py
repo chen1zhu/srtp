@@ -86,7 +86,21 @@ def preprocess_vehicle_data(filepath: str, point_type: str = None, start_time: s
             ]
             
         filtered_rows = len(df)
-        output_filename = os.path.join(OUTPUT_DIR, "filtered_" + os.path.splitext(os.path.basename(filepath))[0] + ".csv")
+        # -- 生成唯一的输出文件名 --
+        base_name = os.path.splitext(os.path.basename(filepath))[0]
+        filters_str = ""
+        if point_type:
+            filters_str += f"_{point_type}"
+        if start_time:
+            filters_str += f"_{start_time.replace(':', '')}"
+        if end_time:
+            filters_str += f"_{end_time.replace(':', '')}"
+        
+        # 如果没有指定任何筛选条件，添加一个通用标记，以防万一
+        if not filters_str:
+            filters_str = "_all"
+
+        output_filename = os.path.join(OUTPUT_DIR, f"filtered_{base_name}{filters_str}.csv")
         df.to_csv(output_filename, index=False)
         
         result = {
@@ -149,8 +163,11 @@ def kmeans_cluster(input_filepath: str, n_clusters: int = 8, output_shapefile: s
         from sklearn.cluster import KMeans
         import geopandas as gpd
 
+        # 构造输入文件的完整路径
+        full_input_path = os.path.join(OUTPUT_DIR, os.path.basename(input_filepath))
+
         # 读取数据
-        df = pd.read_csv(input_filepath)
+        df = pd.read_csv(full_input_path)
         
         # 自动识别经纬度列
         longitude_col, latitude_col = _find_coordinate_columns(df)
@@ -255,8 +272,11 @@ def create_heatmap(input_filepath: str, output_image_path: str = "heatmap.png", 
         import contextily as ctx
         import seaborn as sns
 
+        # 构造输入文件的完整路径
+        full_input_path = os.path.join(OUTPUT_DIR, os.path.basename(input_filepath))
+
         # 从CSV创建GeoDataFrame
-        df = pd.read_csv(input_filepath)
+        df = pd.read_csv(full_input_path)
         
         # 自动识别经纬度列
         longitude_col, latitude_col = _find_coordinate_columns(df)
@@ -355,7 +375,9 @@ def create_gif_from_images(image_files: list, output_gif_path: str = "animated_r
         if not image_files:
             return json.dumps({"status": "error", "message": "Image file list cannot be empty."})
 
-        frames = [Image.open(f) for f in image_files]
+        # 构造每个输入文件的完整路径
+        full_image_paths = [os.path.join(OUTPUT_DIR, os.path.basename(f)) for f in image_files]
+        frames = [Image.open(f) for f in full_image_paths]
         
         if not frames:
             return json.dumps({"status": "error", "message": "Could not open any images from the provided list."})
@@ -400,8 +422,11 @@ def visualize_clusters(input_shapefile: str, output_image_path: str = "cluster_v
         import contextily as ctx
         from matplotlib_scalebar.scalebar import ScaleBar
 
+        # 构造输入文件的完整路径
+        full_input_path = os.path.join(OUTPUT_DIR, os.path.basename(input_shapefile))
+
         # 读取Shapefile
-        gdf = gpd.read_file(input_shapefile)
+        gdf = gpd.read_file(full_input_path)
         if 'cluster' not in gdf.columns:
             return json.dumps({"status": "error", "message": "Input Shapefile must contain a 'cluster' column."})
 
