@@ -1,0 +1,43 @@
+# 上传文件目录
+uploads/
+
+# 输出文件目录  
+outputs/
+
+# 数据文件
+*.xlsx
+*.xls
+*.csv
+
+# 地理数据文件
+*.shp
+*.shx
+*.dbf
+*.prj
+*.cpg
+
+# 图片文件
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.tiff
+*.bmp
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# 环境变量
+.env
+.env.local
+
+# 日志文件
+*.log
+
+# 临时文件
+*.tmp
+*.temp

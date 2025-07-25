@@ -100,7 +100,7 @@ def kmeans_cluster(input_filepath: str, n_clusters: int = 8, output_shapefile: s
     """
     对给定的CSV数据进行K-Means聚类，并输出为Shapefile。
 
-    :param input_filepath: 输入的CSV文件路径 (需要包含 'longitude' 和 'latitude' 列)。
+    :param input_filepath: 输入的CSV文件路径 (需要包含经纬度列，支持多种命名方式)。
     :param n_clusters: 要创建的聚类数量 (K值)。
     :param output_shapefile: 输出的Shapefile文件路径。
     :return: 包含聚类结果摘要的JSON字符串。
@@ -108,22 +108,59 @@ def kmeans_cluster(input_filepath: str, n_clusters: int = 8, output_shapefile: s
     print(f"--- Python函数 `kmeans_cluster` 被执行 ---")
     print(f"参数: input_filepath='{input_filepath}', n_clusters={n_clusters}, output_shapefile='{output_shapefile}'")
 
+    def _find_coordinate_columns(df):
+        """
+        自动识别经纬度列名
+        返回 (longitude_col, latitude_col) 或 (None, None) 如果未找到
+        """
+        # 常见的经度列名
+        longitude_aliases = ['longitude', 'lon', 'lng', 'long', 'x', 'X', 'Longitude', 'LON', 'LNG', 'LONG']
+        # 常见的纬度列名  
+        latitude_aliases = ['latitude', 'lat', 'y', 'Y', 'Latitude', 'LAT']
+        
+        longitude_col = None
+        latitude_col = None
+        
+        # 查找经度列
+        for col in df.columns:
+            if col in longitude_aliases:
+                longitude_col = col
+                break
+        
+        # 查找纬度列
+        for col in df.columns:
+            if col in latitude_aliases:
+                latitude_col = col
+                break
+                
+        return longitude_col, latitude_col
+
     try:
         from sklearn.cluster import KMeans
         import geopandas as gpd
 
         # 读取数据
         df = pd.read_csv(input_filepath)
-        if 'longitude' not in df.columns or 'latitude' not in df.columns:
-            return json.dumps({"status": "error", "message": "Input CSV must contain 'longitude' and 'latitude' columns."})
+        
+        # 自动识别经纬度列
+        longitude_col, latitude_col = _find_coordinate_columns(df)
+        
+        if longitude_col is None or latitude_col is None:
+            available_columns = list(df.columns)
+            return json.dumps({
+                "status": "error", 
+                "message": f"无法识别经纬度列。可用列名: {available_columns}。支持的经度列名: longitude, lon, lng, long, x。支持的纬度列名: latitude, lat, y。"
+            })
+        
+        print(f"   识别到经度列: '{longitude_col}', 纬度列: '{latitude_col}'")
 
         # 执行K-Means聚类
         kmeans = KMeans(n_clusters=n_clusters, random_state=0, n_init=10)
-        df['cluster'] = kmeans.fit_predict(df[['longitude', 'latitude']])
+        df['cluster'] = kmeans.fit_predict(df[[longitude_col, latitude_col]])
 
         # 创建GeoDataFrame
         gdf = gpd.GeoDataFrame(
-            df, geometry=gpd.points_from_xy(df.longitude, df.latitude)
+            df, geometry=gpd.points_from_xy(df[longitude_col], df[latitude_col])
         )
         
         # 设置坐标参考系统 (WGS84)
@@ -138,7 +175,8 @@ def kmeans_cluster(input_filepath: str, n_clusters: int = 8, output_shapefile: s
             "status": "success",
             "output_filepath": output_shapefile,
             "n_clusters": n_clusters,
-            "cluster_point_counts": cluster_summary
+            "cluster_point_counts": cluster_summary,
+            "coordinate_columns_used": {"longitude": longitude_col, "latitude": latitude_col}
         }
 
     except ImportError as e:
@@ -151,13 +189,40 @@ def create_heatmap(input_filepath: str, output_image_path: str = "heatmap.png", 
     """
     根据输入的CSV点数据生成一张带有底图的热力图。
 
-    :param input_filepath: 输入的CSV文件路径 (需要包含 'longitude' 和 'latitude' 列)。
+    :param input_filepath: 输入的CSV文件路径 (需要包含经纬度列，支持多种命名方式)。
     :param output_image_path: 输出的热力图图片文件路径 (PNG格式)。
     :param map_title: 地图的标题。
     :return: 包含操作状态和图片路径的JSON字符串。
     """
     print(f"--- Python函数 `create_heatmap` 被执行 ---")
     print(f"参数: input_filepath='{input_filepath}', output_image_path='{output_image_path}', map_title='{map_title}'")
+
+    def _find_coordinate_columns(df):
+        """
+        自动识别经纬度列名
+        返回 (longitude_col, latitude_col) 或 (None, None) 如果未找到
+        """
+        # 常见的经度列名
+        longitude_aliases = ['longitude', 'lon', 'lng', 'long', 'x', 'X', 'Longitude', 'LON', 'LNG', 'LONG']
+        # 常见的纬度列名  
+        latitude_aliases = ['latitude', 'lat', 'y', 'Y', 'Latitude', 'LAT']
+        
+        longitude_col = None
+        latitude_col = None
+        
+        # 查找经度列
+        for col in df.columns:
+            if col in longitude_aliases:
+                longitude_col = col
+                break
+        
+        # 查找纬度列
+        for col in df.columns:
+            if col in latitude_aliases:
+                latitude_col = col
+                break
+                
+        return longitude_col, latitude_col
 
     try:
         import geopandas as gpd
@@ -167,11 +232,21 @@ def create_heatmap(input_filepath: str, output_image_path: str = "heatmap.png", 
 
         # 从CSV创建GeoDataFrame
         df = pd.read_csv(input_filepath)
-        if 'longitude' not in df.columns or 'latitude' not in df.columns:
-            return json.dumps({"status": "error", "message": "Input CSV must contain 'longitude' and 'latitude' columns."})
+        
+        # 自动识别经纬度列
+        longitude_col, latitude_col = _find_coordinate_columns(df)
+        
+        if longitude_col is None or latitude_col is None:
+            available_columns = list(df.columns)
+            return json.dumps({
+                "status": "error", 
+                "message": f"无法识别经纬度列。可用列名: {available_columns}。支持的经度列名: longitude, lon, lng, long, x。支持的纬度列名: latitude, lat, y。"
+            })
+        
+        print(f"   识别到经度列: '{longitude_col}', 纬度列: '{latitude_col}'")
         
         gdf = gpd.GeoDataFrame(
-            df, geometry=gpd.points_from_xy(df.longitude, df.latitude)
+            df, geometry=gpd.points_from_xy(df[longitude_col], df[latitude_col])
         ).set_crs(epsg=4326)
 
         # 确保坐标系为Web Mercator (EPSG:3857) 以便匹配底图
@@ -368,11 +443,11 @@ tools_description = [
         "type": "function",
         "function": {
             "name": "kmeans_cluster",
-            "description": "对地理坐标数据进行K-Means聚类分析。如果用户没有指定聚类数量(n_clusters)，你必须向用户提问以获取此信息。",
+            "description": "对地理坐标数据进行K-Means聚类分析。自动识别经纬度列（支持longitude/lon/lng/long/x和latitude/lat/y等多种命名方式）。如果用户没有指定聚类数量(n_clusters)，你必须向用户提问以获取此信息。",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "input_filepath": { "type": "string", "description": "包含经纬度列('longitude', 'latitude')的输入CSV文件的路径。通常是数据预处理步骤的输出。"},
+                    "input_filepath": { "type": "string", "description": "包含经纬度列的输入CSV文件的路径。函数会自动识别常见的经纬度列名（如longitude/lon/lng/long/x和latitude/lat/y等）。通常是数据预处理步骤的输出。"},
                     "n_clusters": { "type": "integer", "description": "要形成的聚类数量（K值）。"},
                     "output_shapefile": { "type": "string", "description": "输出的Shapefile文件的路径，例如 'clusters.shp'。"}
                 },
@@ -384,11 +459,11 @@ tools_description = [
         "type": "function",
         "function": {
             "name": "create_heatmap",
-            "description": "基于输入的CSV点数据，生成一张带有在线地图背景的热力图，并保存为PNG图片。用于地理空间数据的可视化分析。",
+            "description": "基于输入的CSV点数据，生成一张带有在线地图背景的热力图，并保存为PNG图片。自动识别经纬度列（支持多种命名方式）。用于地理空间数据的可视化分析。",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "input_filepath": { "type": "string", "description": "输入的点数据CSV文件路径，需要包含'longitude'和'latitude'列。通常是数据预处理步骤的输出。"},
+                    "input_filepath": { "type": "string", "description": "输入的点数据CSV文件路径。函数会自动识别常见的经纬度列名（如longitude/lon/lng/long/x和latitude/lat/y等）。通常是数据预处理步骤的输出。"},
                     "output_image_path": { "type": "string", "description": "输出的热力图图片文件路径。例如, 'heatmap.png'。"},
                     "map_title": { "type": "string", "description": "要显示在热力图顶部的标题。"}
                 },
