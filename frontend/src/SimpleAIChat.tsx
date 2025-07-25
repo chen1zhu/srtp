@@ -1,4 +1,10 @@
 import { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import rehypeHighlight from 'rehype-highlight';
+import 'highlight.js/styles/github.css';
+import { Button, Upload } from 'antd';
+import { UploadOutlined, SendOutlined } from '@ant-design/icons';
+import 'antd/dist/reset.css';
 
 // 类型定义
 interface Message {
@@ -34,14 +40,6 @@ function SimpleAIChat() {
       generatedFiles
     };
     setMessages(prev => [...prev, newMessage]);
-  };
-
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      setSelectedFile(file);
-      setInput(`已选择文件: ${file.name}`);
-    }
   };
 
   const handleRemoveFile = () => {
@@ -207,18 +205,20 @@ function SimpleAIChat() {
     <div className="h-screen flex flex-col bg-gray-50">
       {/* 头部 */}
       <div className="bg-white border-b border-gray-200 p-4">
-        <div className="flex justify-between items-center">
-          <div>
+        <div className="flex justify-between items-start">
+          <div className="flex-1 min-w-0 pr-4">
             <h1 className="text-xl font-semibold text-gray-900">AI 地理空间数据分析助手</h1>
             <p className="text-sm text-gray-600">与AI助手对话，进行地理空间数据分析</p>
           </div>
           {conversationId && (
-            <button
+            <Button 
+              type="primary" 
+              size="large"
               onClick={startNewConversation}
-              className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+              style={{ flexShrink: 0 }}
             >
-              新对话
-            </button>
+              开启新对话
+            </Button>
           )}
         </div>
         {conversationId && (
@@ -251,13 +251,55 @@ function SimpleAIChat() {
               className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
+                className={`px-4 py-2 rounded-lg ${
                   message.role === 'user'
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-white text-gray-900 border border-gray-200'
+                    ? 'bg-blue-500 text-white max-w-xs lg:max-w-md'
+                    : 'bg-white text-gray-900 border border-gray-200 max-w-md lg:max-w-2xl'
                 }`}
               >
-                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                {message.role === 'user' ? (
+                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                ) : (
+                  <div className="text-sm prose prose-sm max-w-none">
+                    <ReactMarkdown
+                      rehypePlugins={[rehypeHighlight]}
+                      components={{
+                        // 自定义样式组件
+                        h1: ({node, ...props}: any) => <h1 className="text-lg font-bold mb-2" {...props} />,
+                        h2: ({node, ...props}: any) => <h2 className="text-base font-semibold mb-2" {...props} />,
+                        h3: ({node, ...props}: any) => <h3 className="text-sm font-semibold mb-1" {...props} />,
+                        p: ({node, ...props}: any) => <p className="mb-2 last:mb-0" {...props} />,
+                        ul: ({node, ...props}: any) => <ul className="list-disc list-inside mb-2 space-y-1" {...props} />,
+                        ol: ({node, ...props}: any) => <ol className="list-decimal list-inside mb-2 space-y-1" {...props} />,
+                        li: ({node, ...props}: any) => <li className="text-sm" {...props} />,
+                        code: ({node, className, children, ...props}: any) => {
+                          const match = /language-(\w+)/.exec(className || '');
+                          const isInline = !match;
+                          return isInline ? (
+                            <code className="bg-gray-100 px-1 py-0.5 rounded text-xs font-mono" {...props}>
+                              {children}
+                            </code>
+                          ) : (
+                            <code className="block bg-gray-100 p-2 rounded text-xs font-mono overflow-x-auto" {...props}>
+                              {children}
+                            </code>
+                          );
+                        },
+                        pre: ({node, ...props}: any) => <pre className="bg-gray-100 p-2 rounded text-xs overflow-x-auto mb-2" {...props} />,
+                        blockquote: ({node, ...props}: any) => <blockquote className="border-l-4 border-gray-300 pl-3 italic mb-2" {...props} />,
+                        strong: ({node, ...props}: any) => <strong className="font-semibold" {...props} />,
+                        em: ({node, ...props}: any) => <em className="italic" {...props} />,
+                        a: ({node, ...props}: any) => <a className="text-blue-600 hover:text-blue-800 underline" target="_blank" rel="noopener noreferrer" {...props} />,
+                        table: ({node, ...props}: any) => <table className="min-w-full border border-gray-300 mb-2" {...props} />,
+                        thead: ({node, ...props}: any) => <thead className="bg-gray-50" {...props} />,
+                        th: ({node, ...props}: any) => <th className="border border-gray-300 px-2 py-1 text-xs font-semibold text-left" {...props} />,
+                        td: ({node, ...props}: any) => <td className="border border-gray-300 px-2 py-1 text-xs" {...props} />,
+                      }}
+                    >
+                      {message.content}
+                    </ReactMarkdown>
+                  </div>
+                )}
                 
                 {/* 显示生成的文件 */}
                 {message.generatedFiles && message.generatedFiles.length > 0 && (
@@ -366,21 +408,20 @@ function SimpleAIChat() {
         
         <div className="flex space-x-2">
           {/* 文件上传按钮 */}
-          <label className="flex-shrink-0 cursor-pointer">
-            <input
-              type="file"
-              accept=".xlsx,.xls,.csv"
-              onChange={handleFileSelect}
-              className="hidden"
-              disabled={isLoading}
-            />
-            <div className={`px-3 py-2 border border-gray-300 rounded-md text-sm bg-gray-50 hover:bg-gray-100 flex items-center space-x-1 ${
-              isLoading ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-            }`}>
-              <span>📁</span>
-              <span>选择文件</span>
-            </div>
-          </label>
+          <Upload
+            accept=".xlsx,.xls,.csv"
+            beforeUpload={(file) => {
+              setSelectedFile(file);
+              setInput(`已选择文件: ${file.name}`);
+              return false; // 阻止自动上传
+            }}
+            showUploadList={false}
+            disabled={isLoading}
+          >
+            <Button icon={<UploadOutlined />} disabled={isLoading}>
+              选择文件
+            </Button>
+          </Upload>
           
           {/* 文本输入框 */}
           <input
@@ -400,15 +441,14 @@ function SimpleAIChat() {
           />
           
           {/* 发送按钮 */}
-          <button
+          <Button
+            type="primary"
             onClick={handleSend}
             disabled={isLoading || (!input.trim() && !selectedFile)}
-            className={`px-4 py-2 bg-blue-500 text-white rounded-md hover-bg-blue-600 focus-ring ${
-              isLoading || (!input.trim() && !selectedFile) ? 'disabled' : ''
-            }`}
+            icon={<SendOutlined />}
           >
             发送
-          </button>
+          </Button>
         </div>
         
         <div className="mt-2 text-xs text-gray-500">
