@@ -103,14 +103,64 @@ def preprocess_vehicle_data(filepath: str, point_type: str = None, start_time: s
         output_filename = os.path.join(OUTPUT_DIR, f"filtered_{base_name}{filters_str}.csv")
         df.to_csv(output_filename, index=False)
         
+        # 生成范围配置文件
+        bounds = {
+            "min_lon": df['longitude'].min(),
+            "min_lat": df['latitude'].min(),
+            "max_lon": df['longitude'].max(),
+            "max_lat": df['latitude'].max()
+        }
+        bounds_filename = os.path.join(OUTPUT_DIR, f"bounds_{base_name}{filters_str}.json")
+        with open(bounds_filename, 'w') as f:
+            json.dump(bounds, f)
+
         result = {
             "status": "success",
             "original_rows": original_rows,
             "filtered_rows": filtered_rows,
             "output_filepath": os.path.basename(output_filename),  # 只返回文件名
+            "bounds_filepath": os.path.basename(bounds_filename),  # 范围配置文件
             "filters_applied": {"point_type": point_type, "time_range": [start_time, end_time], "bbox": bbox}
         }
         
+    except Exception as e:
+        result = {"status": "error", "message": str(e)}
+        
+    return json.dumps(result)
+
+def get_overall_bounds(filepath: str, output_bounds_path: str = "overall_bounds.json"):
+    """
+    计算整个原始数据集的地理边界。
+
+    :param filepath: 原始数据的文件路径 (XLSX格式)。
+    :param output_bounds_path: 输出的边界JSON文件的路径。
+    :return: 包含操作状态和边界文件路径的JSON字符串。
+    """
+    print(f"--- Python函数 `get_overall_bounds` 被执行 ---")
+    print(f"参数: filepath='{filepath}', output_bounds_path='{output_bounds_path}'")
+    
+    # 确保output_bounds_path保存到outputs目录
+    if not os.path.dirname(output_bounds_path):
+        output_bounds_path = os.path.join(OUTPUT_DIR, output_bounds_path)
+
+    try:
+        column_names = ['timestamp', 'longitude', 'latitude', 'type', 'label']
+        df = pd.read_excel(filepath, header=None, names=column_names, engine='openpyxl')
+
+        bounds = {
+            "min_lon": df['longitude'].min(),
+            "min_lat": df['latitude'].min(),
+            "max_lon": df['longitude'].max(),
+            "max_lat": df['latitude'].max()
+        }
+        
+        with open(output_bounds_path, 'w') as f:
+            json.dump(bounds, f)
+            
+        result = {
+            "status": "success",
+            "bounds_filepath": os.path.basename(output_bounds_path)
+        }
     except Exception as e:
         result = {"status": "error", "message": str(e)}
         
@@ -223,7 +273,9 @@ def kmeans_cluster(input_filepath: str, n_clusters: int = 8, output_shapefile: s
         result = {"status": "error", "message": str(e)}
 
     return json.dumps(result)
-def create_heatmap(input_filepath: str, output_image_path: str = "heatmap.png", map_title: str = "Taxies Hotspot Analysis Heatmap"):
+def create_heatmap(input_filepath: str, output_image_path: str = "heatmap.png",
+                  map_title: str = "Taxies Hotspot Analysis Heatmap",
+                  bounds_filepath: str = None):
     """
     根据输入的CSV点数据生成一张带有底图的热力图。
 
@@ -271,6 +323,7 @@ def create_heatmap(input_filepath: str, output_image_path: str = "heatmap.png", 
         import matplotlib.pyplot as plt
         import contextily as ctx
         import seaborn as sns
+        from pyproj import Transformer
 
         # 构造输入文件的完整路径
         full_input_path = os.path.join(OUTPUT_DIR, os.path.basename(input_filepath))
@@ -303,6 +356,8 @@ def create_heatmap(input_filepath: str, output_image_path: str = "heatmap.png", 
         plt.rcParams['axes.unicode_minus'] = False  # 解决保存图像是负号'-'显示为方块的问题
 
         fig, ax = plt.subplots(1, 1, figsize=(12, 12))
+        # 强制地图x/y轴等比例，这对保证比例尺一致性至关重要
+        ax.set_aspect('equal')
 
         # 使用seaborn的kdeplot创建核密度估计图
         sns.kdeplot(
@@ -320,7 +375,23 @@ def create_heatmap(input_filepath: str, output_image_path: str = "heatmap.png", 
             "url": "https://webrd01.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}",
             "attribution": "© 高德地图",
         }
-        ctx.add_basemap(ax, source=gaode_map_provider['url'], crs=gdf.crs.to_string())
+        # 如果有范围配置文件，使用固定范围
+        if bounds_filepath:
+            bounds_path = os.path.join(OUTPUT_DIR, bounds_filepath)
+            with open(bounds_path) as f:
+                bounds = json.load(f)
+            
+            # 转换坐标到Web Mercator
+            transformer = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
+            min_x, min_y = transformer.transform(bounds['min_lon'], bounds['min_lat'])
+            max_x, max_y = transformer.transform(bounds['max_lon'], bounds['max_lat'])
+            
+            # 设置固定范围并添加底图
+            ax.set_xlim(min_x, max_x)
+            ax.set_ylim(min_y, max_y)
+            ctx.add_basemap(ax, source=gaode_map_provider['url'], crs=gdf.crs.to_string())
+        else:
+            ctx.add_basemap(ax, source=gaode_map_provider['url'], crs=gdf.crs.to_string())
 
         # --- 添加地图元素 ---
         # 1. 添加比例尺
@@ -483,7 +554,7 @@ tools_description = [
         "type": "function",
         "function": {
             "name": "preprocess_vehicle_data",
-            "description": "根据用户指定的点类型（起点或终点）、时间戳范围或地理位置，对车辆轨迹XLSX数据进行预处理和筛选。",
+            "description": "根据用户指定的点类型（起点或终点）、时间戳范围或地理位置，对车辆轨迹XLSX数据进行预处理和筛选。此函数还会生成并返回一个包含数据地理范围的JSON文件的路径，用于后续的地图生成。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -492,6 +563,21 @@ tools_description = [
                     "start_time": { "type": "string", "description": "筛选数据的开始时间。可以是代表“当日秒数”的整数（如 '3600'），也可以是“HH:MM:SS”格式的字符串（如 '08:00:00'）。"},
                     "end_time": { "type": "string", "description": "筛选数据的结束时间。可以是代表“当日秒数”的整数（如 '7200'），也可以是“HH:MM:SS”格式的字符串（如 '09:30:00'）。"},
                     "bbox": { "type": "array", "description": "地理边界框，一个包含四个数字的列表：[最小经度, 最小纬度, 最大经度, 最大纬度]。", "items": {"type": "number"}}
+                },
+                "required": ["filepath"],
+            },
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_overall_bounds",
+            "description": "计算整个原始数据集（XLSX文件）的总体地理边界，并将其保存到一个JSON文件中。这个函数应该在所有其他处理之前被调用，以确保所有后续的地图都有一个统一的、一致的地理范围。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "filepath": { "type": "string", "description": "需要计算边界的源数据XLSX文件路径。"},
+                    "output_bounds_path": { "type": "string", "description": "输出的边界JSON文件的路径，例如 'overall_bounds.json'。"}
                 },
                 "required": ["filepath"],
             },
@@ -517,13 +603,14 @@ tools_description = [
         "type": "function",
         "function": {
             "name": "create_heatmap",
-            "description": "基于输入的CSV点数据，生成一张带有在线地图背景的热力图，并保存为PNG图片。自动识别经纬度列（支持多种命名方式）。用于地理空间数据的可视化分析。",
+            "description": "基于输入的CSV点数据，生成一张带有在线地图背景的热力图。支持通过边界文件设定固定的地图范围，以确保不同热力图之间具有可比性。",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "input_filepath": { "type": "string", "description": "输入的点数据CSV文件路径。函数会自动识别常见的经纬度列名（如longitude/lon/lng/long/x和latitude/lat/y等）。通常是数据预处理步骤的输出。"},
+                    "input_filepath": { "type": "string", "description": "输入的点数据CSV文件路径。函数会自动识别常见的经纬度列名。通常是数据预处理步骤的输出。"},
                     "output_image_path": { "type": "string", "description": "输出的热力图图片文件路径。例如, 'heatmap.png'。"},
-                    "map_title": { "type": "string", "description": "要显示在热力图顶部的标题。"}
+                    "map_title": { "type": "string", "description": "要显示在热力图顶部的标题。"},
+                    "bounds_filepath": { "type": "string", "description": "一个包含地图边界的JSON文件的路径。通常由preprocess_vehicle_data函数生成。如果提供，热力图将使用这个固定的地理范围。"}
                 },
                 "required": ["input_filepath"],
             },
@@ -640,6 +727,7 @@ def run_agent_conversation(user_prompt: str, messages: list = None):
 
                 available_functions = {
                     "preprocess_vehicle_data": preprocess_vehicle_data,
+                    "get_overall_bounds": get_overall_bounds,
                     "kmeans_cluster": kmeans_cluster,
                     "create_heatmap": create_heatmap,
                     "create_gif_from_images": create_gif_from_images,
@@ -722,4 +810,3 @@ if __name__ == '__main__':
             print(f"生成的文件: {result['generated_files']}")
     else:
         print(f"对话未完成，模型仍在提问: {result['answer']}")
-
