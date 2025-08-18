@@ -2,6 +2,7 @@ import os
 import json
 import pandas as pd
 from openai import OpenAI
+from .vision_analyzer_test import analyze_gif_with_vision
 
 # ==============================================================================
 # 0. 配置和客户端设置
@@ -21,6 +22,20 @@ try:
 except Exception as e:
     print("错误：请确保你已经设置了 DEEPSEEK_API_KEY 环境变量。")
     exit()
+
+# 新增：保存视觉分析报告的辅助函数
+def _save_vision_report(report_text: str, gif_filename: str) -> str:
+    """将视觉分析文本保存为 Markdown 报告文件，返回保存的相对文件名。"""
+    base = os.path.splitext(os.path.basename(gif_filename))[0]
+    report_filename = f"{base}_vision_report.md"
+    report_path = os.path.join(OUTPUT_DIR, report_filename)
+    try:
+        with open(report_path, "w", encoding="utf-8") as f:
+            f.write(f"# 视觉分析报告\n\n**目标 GIF：** {os.path.basename(gif_filename)}\n\n---\n\n{report_text}\n")
+    except Exception as e:
+        print(f"保存视觉分析报告失败: {e}")
+        # 即便保存失败，也不抛出异常影响主流程
+    return report_filename
 
 # ==============================================================================
 # 1. 我们的工具函数：数据预处理 (无需修改，可直接使用)
@@ -700,9 +715,28 @@ def run_agent_conversation(user_prompt: str, messages: list = None):
             final_answer = response_message.content
             # 检查这是否是一个问题
             is_question = "?" in final_answer or "？" in final_answer
+
+            # 新增：如果有生成的 GIF，则做一次视觉分析并生成报告
+            report_filename = None
+            try:
+                gif_files = [f for f in set(generated_files) if isinstance(f, str) and f.lower().endswith('.gif')]
+                if gif_files:
+                    gif_basename = os.path.basename(gif_files[0])
+                    gif_path = os.path.join(OUTPUT_DIR, gif_basename)
+                    print(f"🔎 发现已生成GIF，开始视觉分析: {gif_path}")
+                    vision_text = analyze_gif_with_vision(gif_path)
+                    report_filename = _save_vision_report(vision_text, gif_basename)
+                    generated_files.append(report_filename)
+                    print(f"📝 视觉分析报告已生成: {report_filename}")
+            except Exception as e:
+                print(f"视觉分析执行失败: {e}")
+
             if is_question:
                 print(f"\n🤔 模型提出问题: {final_answer}")
             else:
+                # 将报告生成的提示附加到回答中（简短提示，不内嵌长文本）
+                if report_filename:
+                    final_answer = f"{final_answer}\n\n已生成GIF视觉分析报告: {report_filename}"
                 print(f"\n✅ DeepSeek V2 最终的回答:\n\n{final_answer}")
             
             messages.append({"role": "assistant", "content": final_answer})

@@ -232,17 +232,17 @@ function SimpleAIChat() {
       {/* 消息区域 */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 ? (
-          <div className="text-center text-gray-500 mt-20">
-            <div className="text-4xl mb-4">🗺️</div>
-            <h3 className="text-lg font-medium mb-2">欢迎使用地理空间AI助手</h3>
-            <p className="mb-4">我可以帮您进行地理空间数据分析，包括：</p>
-            <div className="text-sm space-y-1">
+          <div className="text-center text-gray-700 mt-24">
+            <div className="text-7xl mb-6">🗺️</div>
+            <h3 className="text-3xl font-bold mb-4">欢迎使用地理空间AI助手</h3>
+            <p className="mb-6 text-lg">我可以帮您进行地理空间数据分析，包括：</p>
+            <div className="text-lg space-y-2">
               <p>• K-Means 聚类分析</p>
               <p>• 热力图生成</p>
               <p>• 数据预处理和筛选</p>
               <p>• GIF 动画合成</p>
             </div>
-            <p className="mt-4 text-xs">试试说："请帮我分析 SRTP/20200101_binjiang_point.xlsx 文件"</p>
+            <p className="mt-6 text-lg">试试说："请帮我分析 SRTP/20200101_binjiang_point.xlsx 文件"</p>
           </div>
         ) : (
           messages.map((message) => (

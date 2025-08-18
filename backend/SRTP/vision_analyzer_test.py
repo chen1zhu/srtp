@@ -84,7 +84,7 @@ def analyze_gif_with_vision(gif_path: str):
     try:
         print("   - 正在向OpenRouter (Qwen)视觉模型发送请求...")
         response = client.chat.completions.create(
-            model="Qwen/Qwen2.5-VL-32B-Instruct",  # 使用Qwen 2.5 视觉模型
+            model="qwen/qwen2.5-vl-32b-instruct",  # 使用Qwen 2.5 视觉模型
             messages=messages,
             max_tokens=2048
         )
