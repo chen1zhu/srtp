@@ -19,7 +19,7 @@
 - **数据处理**: Pandas, GeoPandas
 - **机器学习**: Scikit-learn
 - **地理可视化**: Matplotlib, Seaborn, Contextily, Matplotlib-Scalebar
-- **AI模型驱动**: OpenAI SDK (连接到 DeepSeek API)
+- **AI模型驱动**: OpenAI SDK (连接到 Kimi / Moonshot API)
 - **环境管理**: Conda
 
 ## ⚙️ 环境设置
@@ -50,17 +50,17 @@ pip install openai "uvicorn[standard]" fastapi pandas openpyxl matplotlib seabor
 
 ### 3. 设置API密钥
 
-本项目需要连接到 DeepSeek 的 API。请在您的系统中设置一个环境变量 `DEEPSEEK_API_KEY`。
+本项目需要连接到 Kimi（Moonshot）的 API。请在您的系统中设置一个环境变量 `MOONSHOT_API_KEY`。
 
 - **Windows (CMD)**:
   ```cmd
-  setx DEEPSEEK_API_KEY "你的API密钥"
+  setx MOONSHOT_API_KEY "你的API密钥"
   ```
   *注意：设置后需要重启终端才能生效。*
 
 - **Linux / macOS**:
   ```bash
-  export DEEPSEEK_API_KEY="你的API密钥"
+  export MOONSHOT_API_KEY="你的API密钥"
   ```
   *可以将其添加到 `~/.bashrc` 或 `~/.zshrc` 中以永久生效。*
 

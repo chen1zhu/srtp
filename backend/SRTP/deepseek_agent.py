@@ -12,15 +12,15 @@ from .vision_analyzer_test import analyze_gif_with_vision
 OUTPUT_DIR = "outputs"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# 客户端设置：连接到 DeepSeek API
+# 客户端设置：连接到 Kimi (Moonshot) API
 try:
-    # 确保你已经设置了环境变量 DEEPSEEK_API_KEY
+    # 请设置环境变量 MOONSHOT_API_KEY（Kimi 密钥）
     client = OpenAI(
-        api_key=os.environ.get("DEEPSEEK_API_KEY"),
-        base_url="https://api.deepseek.com/v1"
+        api_key=os.environ.get("MOONSHOT_API_KEY"),
+        base_url="https://api.moonshot.cn/v1"
     )
 except Exception as e:
-    print("错误：请确保你已经设置了 DEEPSEEK_API_KEY 环境变量。")
+    print("错误：请确保你已经设置了 MOONSHOT_API_KEY 环境变量。")
     exit()
 
 # 新增：保存视觉分析报告的辅助函数
@@ -670,7 +670,7 @@ tools_description = [
 ]
 
 # ==============================================================================
-# 3. 主流程：与 DeepSeek V2 模型交互
+# 3. 主流程：与 Kimi 模型交互
 # ==============================================================================
 def run_agent_conversation(user_prompt: str, messages: list = None):
     """
@@ -700,9 +700,9 @@ def run_agent_conversation(user_prompt: str, messages: list = None):
     print(f"\n👤 用户: {user_prompt}\n")
     generated_files = []
 
-    print("🤖 正在向 DeepSeek V2 发送请求...")
+    print("🤖 正在向 Kimi (Moonshot) 发送请求...")
     response = client.chat.completions.create(
-        model="deepseek-chat",
+        model="moonshot-v1-auto",
         messages=messages,
         tools=tools_description,
         tool_choice="auto",
@@ -737,7 +737,7 @@ def run_agent_conversation(user_prompt: str, messages: list = None):
                 # 将报告生成的提示附加到回答中（简短提示，不内嵌长文本）
                 if report_filename:
                     final_answer = f"{final_answer}\n\n已生成GIF视觉分析报告: {report_filename}"
-                print(f"\n✅ DeepSeek V2 最终的回答:\n\n{final_answer}")
+                print(f"\n✅ Kimi 最终的回答:\n\n{final_answer}")
             
             messages.append({"role": "assistant", "content": final_answer})
             return {
@@ -747,7 +747,7 @@ def run_agent_conversation(user_prompt: str, messages: list = None):
                 "messages": messages
             }
 
-        print("✅ DeepSeek V2 决定调用一个或多个函数！")
+        print("✅ Kimi 决定调用一个或多个函数！")
         # 将模型的工具调用决策添加到历史记录中
         messages.append(response_message.model_dump())
         
@@ -805,16 +805,16 @@ def run_agent_conversation(user_prompt: str, messages: list = None):
                 })
                 # 跳过本次循环中剩余的工具调用，让模型根据错误报告决定下一步
                 break
-        
-        print("\n🔄 已执行本地函数，将结果返回给 DeepSeek V2 以决定下一步...")
-        response = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=messages,
-            tools=tools_description,
-            tool_choice="auto",
-        )
-        response_message = response.choices[0].message
-        tool_calls = response_message.tool_calls
+            
+            print("\n🔄 已执行本地函数，将结果返回给 Kimi 以决定下一步...")
+            response = client.chat.completions.create(
+                model="moonshot-v1-auto",
+                messages=messages,
+                tools=tools_description,
+                tool_choice="auto",
+            )
+            response_message = response.choices[0].message
+            tool_calls = response_message.tool_calls
 
 if __name__ == '__main__':
     # --- 模拟一个多轮对话场景 ---
