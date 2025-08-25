@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import ConversationSidebar from './components/ConversationSidebar';
 import ChatMessages from './components/ChatMessages';
 import ChatInput from './components/ChatInput';
 import { useConversations } from './hooks/useConversations';
-import type { Message, ChatResponse } from './types';
+import type { ChatResponse, StreamEvent, ToolCallStateItem } from './types';
+import ToolCallPanel from './components/ToolCallPanel';
 
 function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -13,6 +14,11 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [requiresFollowUp, setRequiresFollowUp] = useState(false);
+  // 流式相关状态
+  const [useStream, setUseStream] = useState(true); // 可后续做成设置项
+  const [streamEvents, setStreamEvents] = useState<StreamEvent[]>([]);
+  const [toolCalls, setToolCalls] = useState<ToolCallStateItem[]>([]);
+  const eventBufferRef = useRef('');
 
   const {
     conversations,
@@ -26,29 +32,31 @@ function App() {
     getConversationById,
   } = useConversations();
 
-  const addMessage = (content: string, role: 'user' | 'assistant', generatedFiles?: string[]) => {
-    const newMessage: Message = {
-      id: Math.random().toString(36).substring(2, 11),
-      content,
-      role,
-      timestamp: new Date(),
-      generatedFiles
-    };
-
-    let conversationId = activeConversationId;
-    if (!conversationId) {
-      conversationId = createNewConversation();
-    }
-
-    addMessageToConversation(conversationId, newMessage, role === 'user');
-    return conversationId; // 返回用于此次消息的会话ID
+  const resetStreamingState = () => {
+    setStreamEvents([]);
+    setToolCalls([]);
+    eventBufferRef.current = '';
   };
 
   const handleSend = async () => {
     if ((!input.trim() && !selectedFile) || isLoading) return;
 
     const userMessage = selectedFile ? `${input} [文件: ${selectedFile.name}]` : input.trim();
-    const convIdForThisSend = addMessage(userMessage, 'user');
+    
+    // 先确定要使用的对话ID
+    let convIdForThisSend = activeConversationId;
+    if (!convIdForThisSend) {
+      convIdForThisSend = createNewConversation();
+    }
+    
+    // 添加用户消息到确定的对话中
+    addMessageToConversation(convIdForThisSend, {
+      id: crypto.randomUUID(),
+      content: userMessage,
+      role: 'user' as const,
+      timestamp: new Date(),
+      generatedFiles: []
+    }, true);
     setInput('');
     setIsLoading(true);
 
@@ -84,39 +92,127 @@ function App() {
         };
       }
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        mode: 'cors',
-        body: requestBody,
-      });
-
-      if (response.ok) {
-        const data: ChatResponse = await response.json();
-        
-        // 保存serverId到当前对话
-        updateConversationMeta(convIdForThisSend, { serverId: data.conversation_id, requiresFollowUp: data.requires_follow_up });
-        setRequiresFollowUp(data.requires_follow_up);
-        
-        // 添加AI回复消息
-        addMessage(data.answer, 'assistant', data.generated_files);
-        
-        // 清除选中的文件
-        setSelectedFile(null);
-      } else if (response.status === 404) {
-        addMessage('对话已过期或不存在，请重新开始对话。', 'assistant');
-        // 重置对话状态
-        setRequiresFollowUp(false);
-        handleNewConversation();
-      } else if (response.status === 405) {
-        addMessage('请求方法不被允许，可能是后端 CORS 配置问题。', 'assistant');
+      if (useStream) {
+        resetStreamingState();
+        // 替换为流式端点
+        const streamUrl = (!activeConv || !activeConv.serverId)
+          ? 'http://localhost:8000/chat/stream/start'
+          : `http://localhost:8000/chat/stream/continue/${activeConv.serverId}`;
+        const response = await fetch(streamUrl, {
+          method: 'POST',
+            headers,
+            mode: 'cors',
+            body: requestBody,
+        });
+        if (!response.ok || !response.body) {
+          // 回退到普通模式
+          addMessageToConversation(convIdForThisSend, {
+            id: crypto.randomUUID(),
+            content: '无法建立流式连接，已回退为普通请求。',
+            role: 'assistant',
+            timestamp: new Date(),
+            generatedFiles: []
+          }, false);
+          setUseStream(false);
+        } else {
+          const serverConvId = response.headers.get('X-Conversation-ID');
+          if (serverConvId && (!activeConv || !activeConv.serverId)) {
+            updateConversationMeta(convIdForThisSend, { serverId: serverConvId });
+          }
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder('utf-8');
+          let done = false;
+          while (!done) {
+            const { value, done: readerDone } = await reader.read();
+            if (value) {
+              const chunk = decoder.decode(value, { stream: true });
+              eventBufferRef.current += chunk;
+              const parts = eventBufferRef.current.split('\n\n');
+              for (let i = 0; i < parts.length - 1; i++) {
+                const block = parts[i].trim();
+                if (!block) continue;
+                const lines = block.split('\n');
+                let eventType: string | null = null;
+                let dataLine = '';
+                for (const line of lines) {
+                  if (line.startsWith('event: ')) eventType = line.substring(7).trim();
+                  if (line.startsWith('data: ')) dataLine += line.substring(6).trim();
+                }
+                if (eventType) {
+                  try {
+                    const dataObj = JSON.parse(dataLine);
+                    const ev: StreamEvent = { event: eventType as any, data: dataObj, timestamp: Date.now() };
+                    setStreamEvents(prev => [...prev, ev]);
+                    // 状态机
+                    if (ev.event === 'model_plan') {
+                      const plan = (dataObj.tool_calls || []) as any[];
+                      setToolCalls(plan.map(p => ({ id: p.id, name: p.name, arguments: p.arguments || {}, status: 'pending' })));
+                    } else if (ev.event === 'tool_start') {
+                      setToolCalls(prev => prev.map(c => c.id === dataObj.tool_call_id ? { ...c, status: 'running', startedAt: Date.now() } : c));
+                    } else if (ev.event === 'tool_result') {
+                      setToolCalls(prev => prev.map(c => c.id === dataObj.tool_call_id ? { ...c, status: dataObj.error ? 'error' : 'success', result: dataObj.result, error: dataObj.error, finishedAt: Date.now() } : c));
+                    } else if (ev.event === 'final_answer') {
+                      // 最终回答落入消息
+                      updateConversationMeta(convIdForThisSend, { requiresFollowUp: dataObj.requires_follow_up });
+                      setRequiresFollowUp(dataObj.requires_follow_up);
+                      addMessageToConversation(convIdForThisSend, {
+                        id: crypto.randomUUID(),
+                        content: dataObj.content,
+                        role: 'assistant',
+                        timestamp: new Date(),
+                        generatedFiles: (dataObj.generated_files || []).map((f: string) => `http://localhost:8000/outputs/${f}`)
+                      }, false);
+                      setSelectedFile(null);
+                    }
+                  } catch (e) {
+                    // ignore
+                  }
+                }
+              }
+              eventBufferRef.current = parts[parts.length - 1];
+            }
+            done = readerDone;
+          }
+        }
       } else {
-        const errorText = await response.text();
-        addMessage(`服务器错误 (${response.status}): ${errorText}`, 'assistant');
+        const response = await fetch(url, {
+          method: 'POST',
+          headers,
+          mode: 'cors',
+          body: requestBody,
+        });
+        if (response.ok) {
+          const data: ChatResponse = await response.json();
+          updateConversationMeta(convIdForThisSend, { serverId: data.conversation_id, requiresFollowUp: data.requires_follow_up });
+          setRequiresFollowUp(data.requires_follow_up);
+          addMessageToConversation(convIdForThisSend, {
+            id: crypto.randomUUID(),
+            content: data.answer,
+            role: 'assistant',
+            timestamp: new Date(),
+            generatedFiles: data.generated_files || []
+          }, false);
+          setSelectedFile(null);
+        } else if (response.status === 404) {
+          addMessageToConversation(convIdForThisSend, { id: crypto.randomUUID(), content: '对话已过期或不存在，请重新开始对话。', role: 'assistant', timestamp: new Date(), generatedFiles: [] }, false);
+          setRequiresFollowUp(false);
+          handleNewConversation();
+        } else if (response.status === 405) {
+          addMessageToConversation(convIdForThisSend, { id: crypto.randomUUID(), content: '请求方法不被允许，可能是后端 CORS 配置问题。', role: 'assistant', timestamp: new Date(), generatedFiles: [] }, false);
+        } else {
+          const errorText = await response.text();
+          addMessageToConversation(convIdForThisSend, { id: crypto.randomUUID(), content: `服务器错误 (${response.status}): ${errorText}`, role: 'assistant', timestamp: new Date(), generatedFiles: [] }, false);
+        }
       }
     } catch (error) {
       console.error('Network error:', error);
-      addMessage('网络连接错误，请检查后端服务是否启动。', 'assistant');
+      addMessageToConversation(convIdForThisSend, {
+        id: crypto.randomUUID(),
+        content: '网络连接错误，请检查后端服务是否启动。',
+        role: 'assistant' as const,
+        timestamp: new Date(),
+        generatedFiles: []
+      }, false);
     } finally {
       setIsLoading(false);
     }
@@ -253,6 +349,17 @@ function App() {
             </div>
           </div>
 
+          {/* 工具调用链显示区域（在消息列表上方） */}
+          { (toolCalls.length > 0 || streamEvents.length > 0 || (isLoading && useStream)) && (
+            <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">
+              <ToolCallPanel
+                events={streamEvents}
+                toolCalls={toolCalls}
+                isStreaming={isLoading}
+              />
+            </div>
+          )}
+
           {/* 消息区域 */}
           <ChatMessages
             messages={activeConversation?.messages || []}
@@ -271,6 +378,8 @@ function App() {
             setSelectedFile={setSelectedFile}
             requiresFollowUp={requiresFollowUp}
           />
+          {/* 可选：底部显示是否流式模式的切换（简单占位） */}
+          <div className="text-[10px] text-gray-400 text-center pb-1 select-none">模式: {useStream ? '流式' : '普通'}（可在代码中修改 useStream）</div>
         </div>
       </div>
     </ConfigProvider>

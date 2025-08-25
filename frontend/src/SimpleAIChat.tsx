@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import 'highlight.js/styles/github.css';
@@ -23,6 +23,9 @@ interface ChatResponse {
 }
 
 // AI聊天应用
+import ToolCallPanel from './components/ToolCallPanel';
+import type { StreamEvent, ToolCallStateItem } from './types';
+
 function SimpleAIChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -30,6 +33,10 @@ function SimpleAIChat() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [requiresFollowUp, setRequiresFollowUp] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [useStream, setUseStream] = useState(true); // 默认使用流式
+  const [streamEvents, setStreamEvents] = useState<StreamEvent[]>([]);
+  const [toolCalls, setToolCalls] = useState<ToolCallStateItem[]>([]);
+  const eventBufferRef = useRef('');
 
   const addMessage = (content: string, role: 'user' | 'assistant', generatedFiles?: string[]) => {
     const newMessage: Message = {
@@ -47,6 +54,12 @@ function SimpleAIChat() {
     setInput('');
   };
 
+  const resetStreamingState = () => {
+    setStreamEvents([]);
+    setToolCalls([]);
+    eventBufferRef.current = '';
+  };
+
   const handleSend = async () => {
     if ((!input.trim() && !selectedFile) || isLoading) return;
 
@@ -55,7 +68,7 @@ function SimpleAIChat() {
     addMessage(userMessage, 'user');
     setIsLoading(true);
 
-    try {
+  try {
       let url: string;
       let requestBody: FormData | string;
       let headers: Record<string, string>;
@@ -87,41 +100,95 @@ function SimpleAIChat() {
         };
       }
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers,
-        mode: 'cors',
-        body: requestBody,
-      });
+      if (useStream) {
+        resetStreamingState();
+        // 选择流式接口
+        const streamUrl = !conversationId ? url.replace('/chat/', '/chat/stream/') : url.replace('/chat/continue/', '/chat/stream/continue/');
+        const response = await fetch(streamUrl, {
+          method: 'POST',
+          headers,
+          mode: 'cors',
+          body: requestBody,
+        });
+        if (!response.ok || !response.body) {
+          addMessage('无法建立流式连接，回退到普通模式。', 'assistant');
+          setUseStream(false);
+          return;
+        }
+        // 获取后端生成的会话ID（从header）
+        const serverConvId = response.headers.get('X-Conversation-ID');
+        if (serverConvId) setConversationId(serverConvId);
 
-      if (response.ok) {
-        const data: ChatResponse = await response.json();
-        
-        // 更新对话状态
-        setConversationId(data.conversation_id);
-        setRequiresFollowUp(data.requires_follow_up);
-        
-        // 添加AI回复消息
-        addMessage(data.answer, 'assistant', data.generated_files);
-        
-        // 清除选中的文件
-        setSelectedFile(null);
-      } else if (response.status === 404) {
-        addMessage('对话已过期或不存在，请重新开始对话。', 'assistant');
-        // 重置对话状态
-        setConversationId(null);
-        setRequiresFollowUp(false);
-      } else if (response.status === 405) {
-        addMessage('请求方法不被允许，可能是后端 CORS 配置问题。', 'assistant');
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let done = false;
+        while (!done) {
+          const { value, done: readerDone } = await reader.read();
+          if (value) {
+            const chunk = decoder.decode(value, { stream: true });
+            eventBufferRef.current += chunk;
+            // 解析 SSE 格式
+            const parts = eventBufferRef.current.split('\n\n');
+            for (let i = 0; i < parts.length - 1; i++) {
+              const block = parts[i].trim();
+              if (!block) continue;
+              const lines = block.split('\n');
+              let eventType: string | null = null;
+              let dataLine = '';
+              for (const line of lines) {
+                if (line.startsWith('event: ')) eventType = line.substring(7).trim();
+                if (line.startsWith('data: ')) dataLine += line.substring(6).trim();
+              }
+              if (eventType) {
+                try {
+                  const dataObj = JSON.parse(dataLine);
+                  const ev: StreamEvent = { event: eventType as any, data: dataObj, timestamp: Date.now() };
+                  setStreamEvents(prev => [...prev, ev]);
+                  // 更新工具调用状态机
+                  if (ev.event === 'model_plan') {
+                    const plan = (dataObj.tool_calls || []) as any[];
+                    setToolCalls(plan.map(p => ({ id: p.id, name: p.name, arguments: p.arguments || {}, status: 'pending' })));
+                  } else if (ev.event === 'tool_start') {
+                    setToolCalls(prev => prev.map(c => c.id === dataObj.tool_call_id ? { ...c, status: 'running', startedAt: Date.now() } : c));
+                  } else if (ev.event === 'tool_result') {
+                    setToolCalls(prev => prev.map(c => c.id === dataObj.tool_call_id ? { ...c, status: dataObj.error ? 'error' : 'success', result: dataObj.result, error: dataObj.error, finishedAt: Date.now() } : c));
+                  } else if (ev.event === 'final_answer') {
+                    // 添加最终助手消息
+                    addMessage(dataObj.content, 'assistant', (dataObj.generated_files || []));
+                    setRequiresFollowUp(dataObj.requires_follow_up);
+                  }
+                } catch (e) {
+                  // ignore parse error
+                }
+              }
+            }
+            eventBufferRef.current = parts[parts.length - 1];
+          }
+          done = readerDone;
+        }
       } else {
-        const errorText = await response.text();
-        addMessage(`服务器错误 (${response.status}): ${errorText}`, 'assistant');
+        const response = await fetch(url, {
+          method: 'POST',
+          headers,
+          mode: 'cors',
+          body: requestBody,
+        });
+        if (response.ok) {
+          const data: ChatResponse = await response.json();
+          setConversationId(data.conversation_id);
+          setRequiresFollowUp(data.requires_follow_up);
+          addMessage(data.answer, 'assistant', data.generated_files);
+          setSelectedFile(null);
+        } else {
+          const errorText = await response.text();
+          addMessage(`服务器错误 (${response.status}): ${errorText}`, 'assistant');
+        }
       }
     } catch (error) {
       console.error('Network error:', error);
       addMessage('网络连接错误，请检查后端服务是否启动。', 'assistant');
     } finally {
-      setIsLoading(false);
+  setIsLoading(false);
     }
   };
 
@@ -229,8 +296,15 @@ function SimpleAIChat() {
         )}
       </div>
 
-      {/* 消息区域 */}
+      {/* 消息区域 + 工具调用面板 */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {toolCalls.length > 0 || streamEvents.length > 0 || isLoading ? (
+          <ToolCallPanel
+            events={streamEvents}
+            toolCalls={toolCalls}
+            isStreaming={isLoading}
+          />
+        ) : null}
         {messages.length === 0 ? (
           <div className="text-center text-gray-700 mt-24">
             <div className="text-7xl mb-6">🗺️</div>

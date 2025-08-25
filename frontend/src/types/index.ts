@@ -26,6 +26,53 @@ export interface ChatResponse {
   generated_files: string[];
 }
 
+// 流式事件类型（SSE）
+export type StreamEventType =
+  | 'user_message'
+  | 'model_plan'
+  | 'tool_start'
+  | 'tool_result'
+  | 'model_message'
+  | 'final_answer'
+  | 'error';
+
+export interface ToolCallPlanItem {
+  id: string;
+  name: string;
+  arguments: Record<string, any>;
+}
+
+export interface ToolStartEvent {
+  tool_call_id: string;
+  name: string;
+  arguments: Record<string, any>;
+}
+
+export interface ToolResultEvent {
+  tool_call_id: string;
+  name: string;
+  status?: string;
+  result?: any;
+  error?: string;
+}
+
+export interface StreamEvent<T = any> {
+  event: StreamEventType;
+  data: T;
+  timestamp: number;
+}
+
+export interface ToolCallStateItem {
+  id: string; // tool_call_id
+  name: string;
+  arguments: Record<string, any>;
+  status: 'pending' | 'running' | 'success' | 'error';
+  result?: any;
+  error?: string;
+  startedAt?: number;
+  finishedAt?: number;
+}
+
 // 侧边栏状态
 export interface SidebarState {
   isOpen: boolean;
