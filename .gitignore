@@ -45,8 +45,8 @@ ehthumbs.db
 Thumbs.db
 
 # Backend specific
-backend/uploads/
-backend/outputs/
+uploads/
+outputs/
 backend/*.xlsx
 backend/*.xls
 backend/*.csv
@@ -74,3 +74,9 @@ yarn-error.log*
 
 # Node.js (for frontend)
 node_modules/
+
+# test dataset
+/*.xlsx
+
+# initial directory
+backend/SRTP/

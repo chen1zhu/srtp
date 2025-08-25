@@ -4,6 +4,8 @@ import pandas as pd
 from openai import OpenAI
 from .vision_analyzer_test import analyze_image_sequence
 
+from typing import Generator, Dict, Any, List
+
 # ==============================================================================
 # 0. 配置和客户端设置
 # ==============================================================================
@@ -679,6 +681,164 @@ def generate_analysis_report(
 
     return json.dumps(result)
 
+def run_agent_conversation_stream(user_prompt: str, messages: list | None = None) -> Generator[Dict[str, Any], None, Dict[str, Any]]:
+    """一个生成器：逐步向前端产出事件，使前端可以实时显示工具调用链路。
+
+    事件类型(event) 约定：
+      - user_message: {content}
+      - model_plan:   {raw_message, tool_calls:[{id,name,arguments_json}]}
+      - tool_start:   {tool_call_id, name, arguments}
+      - tool_result:  {tool_call_id, name, status, result(raw_json), parsed(optional)}
+      - model_message: {content}
+      - final_answer: {content, generated_files, requires_follow_up}
+      - error: {message}
+
+    生成器最终 return 与 run_agent_conversation 相同结构的 dict。
+    """
+    internal_messages: List[Dict[str, Any]]
+    if messages is None:
+        system_prompt = (
+            "你是一个专业的、友好的地理空间分析AI助手。"
+            "你的任务是帮助用户分析地理数据。"
+            "当用户的指令不明确或缺少执行工具所需的必要参数时，你必须向用户提问以澄清问题。回复时采用简洁明确的表达方式"
+            "在调用任何工具之前，请确保所有必需的参数都已从用户那里获得。"
+        )
+        internal_messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+        yield {"event": "user_message", "data": {"content": user_prompt}}
+    else:
+        internal_messages = messages[:]
+        internal_messages.append({"role": "user", "content": user_prompt})
+        yield {"event": "user_message", "data": {"content": user_prompt}}
+
+    generated_files: List[str] = []
+
+    try:
+        response = client.chat.completions.create(
+            model="qwen3",
+            messages=internal_messages,
+            tools=tools_description,
+            tool_choice="auto",
+        )
+        response_message = response.choices[0].message
+        tool_calls = response_message.tool_calls
+
+        while True:
+            if not tool_calls:
+                final_answer = response_message.content
+                is_question = "?" in (final_answer or "") or "？" in (final_answer or "")
+
+                internal_messages.append({"role": "assistant", "content": final_answer})
+                yield {"event": "final_answer", "data": {
+                    "content": final_answer,
+                    "generated_files": list(set(generated_files)),
+                    "requires_follow_up": is_question,
+                    "messages": internal_messages,
+                }}
+                return {
+                    "answer": final_answer,
+                    "generated_files": list(set(generated_files)),
+                    "requires_follow_up": is_question,
+                    "messages": internal_messages,
+                }
+
+            # 有工具调用计划
+            plan = []
+            for tc in tool_calls:
+                try:
+                    args_parsed = json.loads(tc.function.arguments)
+                except Exception:  # noqa: BLE001
+                    args_parsed = tc.function.arguments
+                plan.append({
+                    "id": tc.id,
+                    "name": tc.function.name,
+                    "arguments": args_parsed,
+                })
+            internal_messages.append(response_message.model_dump())
+            yield {"event": "model_plan", "data": {"tool_calls": plan}}
+
+            for tc in tool_calls:
+                func_name = tc.function.name
+                try:
+                    try:
+                        func_args = json.loads(tc.function.arguments)
+                    except Exception:  # noqa: BLE001
+                        func_args = {}
+                    yield {"event": "tool_start", "data": {"tool_call_id": tc.id, "name": func_name, "arguments": func_args}}
+
+                    available_functions = {
+                        "preprocess_vehicle_data": preprocess_vehicle_data,
+                        "get_overall_bounds": get_overall_bounds,
+                        "kmeans_cluster": kmeans_cluster,
+                        "create_heatmap": create_heatmap,
+                        "create_gif_from_images": create_gif_from_images,
+                        "visualize_clusters": visualize_clusters,
+                        "generate_analysis_report": generate_analysis_report,
+                    }
+                    target_fn = available_functions.get(func_name)
+                    if not target_fn:
+                        raise ValueError(f"未知函数: {func_name}")
+
+                    # 为generate_analysis_report函数传递session_generated_files参数
+                    if func_name == "generate_analysis_report":
+                        func_args["session_generated_files"] = generated_files
+
+                    raw_result = target_fn(**func_args)
+                    try:
+                        parsed = json.loads(raw_result)
+                    except Exception:  # noqa: BLE001
+                        parsed = {"status": "unknown", "raw": raw_result}
+
+                    # 收集生成文件
+                    if isinstance(parsed, dict):
+                        for k, v in parsed.items():
+                            if isinstance(v, str) and ('path' in k or v.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.shp', '.json', '.csv'))):
+                                generated_files.append(v)
+                            if k == 'generated_files' and isinstance(v, list):
+                                generated_files.extend(v)
+
+                    internal_messages.append({
+                        "tool_call_id": tc.id,
+                        "role": "tool",
+                        "name": func_name,
+                        "content": raw_result,
+                    })
+                    yield {"event": "tool_result", "data": {
+                        "tool_call_id": tc.id,
+                        "name": func_name,
+                        "status": parsed.get('status'),
+                        "result": parsed,
+                    }}
+                except Exception as e:  # noqa: BLE001
+                    error_payload = {"tool_call_id": tc.id, "name": func_name, "error": str(e)}
+                    yield {"event": "tool_result", "data": error_payload}
+                    internal_messages.append({
+                        "tool_call_id": tc.id,
+                        "role": "tool",
+                        "name": func_name,
+                        "content": json.dumps({"status": "error", "message": str(e)}),
+                    })
+                    break  # 失败后提前反馈给模型
+
+            # 继续下一轮
+            response = client.chat.completions.create(
+                model="qwen3",
+                messages=internal_messages,
+                tools=tools_description,
+                tool_choice="auto",
+            )
+            response_message = response.choices[0].message
+            tool_calls = response_message.tool_calls
+            if not tool_calls and response_message.content:
+                # 先发一个模型中间回答（可能是澄清问题）
+                internal_messages.append({"role": "assistant", "content": response_message.content})
+                yield {"event": "model_message", "data": {"content": response_message.content}}
+                # 再继续 while 循环顶部处理 final_answer 分支
+    except Exception as e:  # noqa: BLE001
+        yield {"event": "error", "data": {"message": str(e)}}
+        return {"answer": f"发生错误: {e}", "generated_files": [], "requires_follow_up": False, "messages": internal_messages}
 
 # ==============================================================================
 # 2. 为LLM定义工具的描述 (无需修改)

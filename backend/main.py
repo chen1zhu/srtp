@@ -3,6 +3,7 @@ import uuid
 import os
 import shutil
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -10,7 +11,7 @@ from typing import List, Optional, Dict
 import json
 
 # 从我们的代理脚本中导入核心功能
-from .deepseek_agent import run_agent_conversation
+from .deepseek_agent import run_agent_conversation, run_agent_conversation_stream
 
 app = FastAPI(
     title="Conversational Geo-Analysis AI Agent API",
@@ -124,6 +125,67 @@ async def start_chat(
     conversations[conversation_id] = result.get("messages", [])
     
     return format_response(result, conversation_id)
+
+@app.post("/chat/stream/start")
+async def start_chat_stream(
+    request: Request,
+    file: Optional[UploadFile] = File(None),
+    query: Optional[str] = Form(None)
+):
+    """开启新会话的流式接口 (SSE-like)。前端使用 fetch(EventSource polyfill) 逐事件解析。"""
+    conversation_id = str(uuid.uuid4())
+    content_type = request.headers.get("content-type", "")
+    if "multipart/form-data" in content_type:
+        user_prompt = await _handle_file_upload(file, query, conversation_id)
+    elif "application/json" in content_type:
+        body = await request.body()
+        json_data = json.loads(body)
+        user_prompt = json_data.get("query", "")
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported content type")
+
+    def event_stream():
+        for event in run_agent_conversation_stream(user_prompt=user_prompt, messages=None):
+            # 将事件编码为 text/event-stream 格式
+            yield f"event: {event['event']}\n"
+            yield f"data: {json.dumps(event['data'], ensure_ascii=False)}\n\n"
+        # 结束
+
+    # 由于生成器最终 return 的dict我们拿不到，这里后续如果需要也可扩展消息通道
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers={"X-Conversation-ID": conversation_id})
+
+@app.post("/chat/stream/continue/{conversation_id}")
+async def continue_chat_stream(
+    conversation_id: str,
+    request: Request,
+    file: Optional[UploadFile] = File(None),
+    query: Optional[str] = Form(None)
+):
+    if conversation_id not in conversations:
+        raise HTTPException(status_code=404, detail="Conversation ID not found")
+    content_type = request.headers.get("content-type", "")
+    if "multipart/form-data" in content_type:
+        user_prompt = await _handle_file_upload(file, query, conversation_id)
+    elif "application/json" in content_type:
+        body = await request.body()
+        json_data = json.loads(body)
+        user_prompt = json_data.get("query", "")
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported content type")
+
+    history = conversations[conversation_id]
+
+    def event_stream():
+        last_result = None
+        for event in run_agent_conversation_stream(user_prompt=user_prompt, messages=history):
+            yield f"event: {event['event']}\n"
+            yield f"data: {json.dumps(event['data'], ensure_ascii=False)}\n\n"
+            if event['event'] == 'final_answer':
+                # 更新历史
+                conversations[conversation_id] = event['data'].get('messages', history)
+                last_result = event['data']
+        # 结束
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers={"X-Conversation-ID": conversation_id})
 
 @app.post("/chat/continue/{conversation_id}", response_model=ChatResponse)
 async def continue_chat(

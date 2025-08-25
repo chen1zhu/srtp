@@ -2,7 +2,7 @@ import os
 import json
 import pandas as pd
 from openai import OpenAI
-from .vision_analyzer_test import analyze_gif_with_vision
+
 from typing import Generator, Dict, Any, List
 
 # ==============================================================================
@@ -24,19 +24,6 @@ except Exception as e:
     print("错误：请确保你已经设置了 DEEPSEEK_API_KEY 环境变量。")
     exit()
 
-# 新增：保存视觉分析报告的辅助函数
-def _save_vision_report(report_text: str, gif_filename: str) -> str:
-    """将视觉分析文本保存为 Markdown 报告文件，返回保存的相对文件名。"""
-    base = os.path.splitext(os.path.basename(gif_filename))[0]
-    report_filename = f"{base}_vision_report.md"
-    report_path = os.path.join(OUTPUT_DIR, report_filename)
-    try:
-        with open(report_path, "w", encoding="utf-8") as f:
-            f.write(f"# 视觉分析报告\n\n**目标 GIF：** {os.path.basename(gif_filename)}\n\n---\n\n{report_text}\n")
-    except Exception as e:
-        print(f"保存视觉分析报告失败: {e}")
-        # 即便保存失败，也不抛出异常影响主流程
-    return report_filename
 
 # ==============================================================================
 # 1. 我们的工具函数：数据预处理 (无需修改，可直接使用)
@@ -196,21 +183,8 @@ def run_agent_conversation_stream(user_prompt: str, messages: list | None = None
                 final_answer = response_message.content
                 is_question = "?" in (final_answer or "") or "？" in (final_answer or "")
 
-                # 如果已生成GIF则做视觉分析
-                report_filename = None
-                try:
-                    gif_files = [f for f in set(generated_files) if isinstance(f, str) and f.lower().endswith('.gif')]
-                    if gif_files:
-                        gif_basename = os.path.basename(gif_files[0])
-                        gif_path = os.path.join(OUTPUT_DIR, gif_basename)
-                        vision_text = analyze_gif_with_vision(gif_path)
-                        report_filename = _save_vision_report(vision_text, gif_basename)
-                        generated_files.append(report_filename)
-                except Exception as e:  # noqa: BLE001
-                    yield {"event": "error", "data": {"message": f"视觉分析失败: {e}"}}
 
-                if report_filename:
-                    final_answer = f"{final_answer}\n\n已生成GIF视觉分析报告: {report_filename}"
+
 
                 internal_messages.append({"role": "assistant", "content": final_answer})
                 yield {"event": "final_answer", "data": {
@@ -898,8 +872,7 @@ def run_agent_conversation(user_prompt: str, messages: list = None):
                     gif_basename = os.path.basename(gif_files[0])
                     gif_path = os.path.join(OUTPUT_DIR, gif_basename)
                     print(f"🔎 发现已生成GIF，开始视觉分析: {gif_path}")
-                    vision_text = analyze_gif_with_vision(gif_path)
-                    report_filename = _save_vision_report(vision_text, gif_basename)
+
                     generated_files.append(report_filename)
                     print(f"📝 视觉分析报告已生成: {report_filename}")
             except Exception as e:
