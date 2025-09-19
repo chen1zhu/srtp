@@ -32,17 +32,61 @@ const MessageItem: React.FC<MessageItemProps> = ({
   const normalFiles = generated.filter(f => !isDeferredFile(f));
   const [showDeferred, setShowDeferred] = useState(false);
 
+  // 特殊：tool_calls 消息独立渲染
+  if (message.role === 'tool_calls') {
+    // content 中存储的是 JSON 字符串 { toolCalls: [...], finalAnswerPreview: '' }
+    let parsed: any = null;
+    try { parsed = JSON.parse(message.content); } catch {}
+    const toolCallsData: any[] = parsed?.toolCalls || [];
+    const [collapsed, setCollapsed] = useState(true);
+    return (
+      <div className="flex justify-start pl-2 mb-3">
+        <div className="w-full max-w-[85%] bg-gradient-to-r from-gray-50 to-gray-100 border border-gray-300 rounded-xl shadow-inner px-4 py-3 text-gray-800">
+          <div className="flex items-center justify-between cursor-pointer select-none" onClick={() => setCollapsed(c => !c)}>
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <span>🛠️ 工具调用记录</span>
+              <span className="text-[10px] bg-gray-800 text-white rounded-full px-2 py-0.5">{toolCallsData.length} 步</span>
+            </div>
+            <span className="text-xs text-gray-500">{collapsed ? '展开 ▾' : '收起 ▴'}</span>
+          </div>
+          {!collapsed && (
+            <div className="mt-3 space-y-3 max-h-80 overflow-y-auto pr-1">
+              {toolCallsData.map(tc => (
+                <div key={tc.id} className="border border-gray-200 rounded-lg bg-white p-2 text-xs space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-gray-700">{tc.name}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] ${tc.status==='success' ? 'bg-green-100 text-green-600' : tc.status==='error' ? 'bg-red-100 text-red-600' : tc.status==='running' ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-500'}`}>{tc.status}</span>
+                  </div>
+                  <details className="group" open>
+                    <summary className="cursor-pointer text-gray-600">参数</summary>
+                    <pre className="mt-1 bg-gray-900 text-gray-100 p-2 rounded text-[10px] overflow-x-auto">{JSON.stringify(tc.arguments, null, 2)}</pre>
+                  </details>
+                  {tc.result && (
+                    <details className="group">
+                      <summary className="cursor-pointer text-gray-600">结果</summary>
+                      <pre className="mt-1 bg-gray-800 text-gray-100 p-2 rounded text-[10px] overflow-x-auto">{JSON.stringify(tc.result, null, 2)}</pre>
+                    </details>
+                  )}
+                  {tc.error && (
+                    <div className="text-red-600 text-[10px]">错误: {tc.error}</div>
+                  )}
+                  <div className="text-[10px] text-gray-400 flex gap-2">
+                    {tc.startedAt && <span>开始: {new Date(tc.startedAt).toLocaleTimeString()}</span>}
+                    {tc.finishedAt && <span>结束: {new Date(tc.finishedAt).toLocaleTimeString()}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-[10px] text-gray-400 mt-2 mb-0">{message.timestamp.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div
-      className={`flex ${message.role === 'user' ? 'justify-end pr-2' : 'justify-start pl-2'} mb-3`}
-    >
-      <div
-        className={`max-w-[85%] ${
-          message.role === 'user'
-            ? 'bg-blue-500 text-white rounded-2xl rounded-br-sm'
-            : 'bg-white text-gray-900 border border-gray-200 rounded-2xl rounded-bl-sm shadow-sm'
-        } px-4 py-3`}
-      >
+    <div className={`flex ${message.role === 'user' ? 'justify-end pr-2' : 'justify-start pl-2'} mb-3`}>
+      <div className={`max-w-[85%] ${message.role === 'user' ? 'bg-blue-500 text-white rounded-2xl rounded-br-sm' : 'bg-white text-gray-900 border border-gray-200 rounded-2xl rounded-bl-sm shadow-sm'} px-4 py-3`}>
         {/* 消息内容 */}
         {message.role === 'user' ? (
           <p className="text-sm whitespace-pre-wrap leading-tight" style={{ margin: 0 }}>{message.content}</p>
@@ -209,13 +253,8 @@ const MessageItem: React.FC<MessageItemProps> = ({
         )}
         
         {/* 时间戳 */}
-        <p className={`text-xs mt-1 ${
-          message.role === 'user' ? 'text-blue-100' : 'text-gray-400'
-        }`} style={{ margin: '4px 0 0 0' }}>
-          {message.timestamp.toLocaleTimeString('zh-CN', {
-            hour: '2-digit',
-            minute: '2-digit'
-          })}
+        <p className={`text-xs mt-1 ${message.role === 'user' ? 'text-blue-100' : 'text-gray-400'}`} style={{ margin: '4px 0 0 0' }}>
+          {message.timestamp.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
         </p>
       </div>
     </div>

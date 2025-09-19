@@ -18,8 +18,8 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 try:
     # 确保你已经设置了环境变量 DEEPSEEK_API_KEY
     client = OpenAI(
-        api_key="sk-g9jNANkTBso9WFg4341511D3Af1d4f6d8718137cB3B84a43",
-        base_url="https://chat.zju.edu.cn/api/ai/v1"
+        api_key="sk-ssoeeauzjmuzunkplkkqliqynfoabkfmkqwqgjfvmonobkxa",
+        base_url="https://api.siliconflow.cn/v1"
     )
 except Exception as e:
     print("错误：请确保你已经设置了 DEEPSEEK_API_KEY 环境变量。")
@@ -30,7 +30,7 @@ def _call_llm_for_section(prompt: str) -> str:
     try:
         print(f"   - 调用LLM生成文本部分...")
         response = client.chat.completions.create(
-            model="qwen3",
+            model="Qwen/Qwen3-30B-A3B-Instruct-2507",
             messages=[
                 {"role": "system", "content": "你是一位专业的GIS分析报告撰写者。请根据用户的提示，撰写专业、详细、内容丰富的报告部分。"},
                 {"role": "user", "content": prompt}
@@ -717,7 +717,7 @@ def run_agent_conversation_stream(user_prompt: str, messages: list | None = None
 
     try:
         response = client.chat.completions.create(
-            model="qwen3",
+            model="Qwen/Qwen3-30B-A3B-Instruct-2507",
             messages=internal_messages,
             tools=tools_description,
             tool_choice="auto",
@@ -824,7 +824,7 @@ def run_agent_conversation_stream(user_prompt: str, messages: list | None = None
 
             # 继续下一轮
             response = client.chat.completions.create(
-                model="qwen3",
+                model="Qwen/Qwen3-30B-A3B-Instruct-2507",
                 messages=internal_messages,
                 tools=tools_description,
                 tool_choice="auto",
@@ -999,7 +999,7 @@ def run_agent_conversation(user_prompt: str, messages: list = None, session_gene
     
     print("🤖 正在向 DeepSeek V2 发送请求...")
     response = client.chat.completions.create(
-        model="qwen3",
+        model="Qwen/Qwen3-30B-A3B-Instruct-2507",
         messages=messages,
         tools=tools_description,
         tool_choice="auto",
@@ -1092,7 +1092,7 @@ def run_agent_conversation(user_prompt: str, messages: list = None, session_gene
         
         print("\n🔄 已执行本地函数，将结果返回给 DeepSeek V2 以决定下一步...")
         response = client.chat.completions.create(
-            model="qwen3",
+            model="Qwen/Qwen3-30B-A3B-Instruct-2507",
             messages=messages,
             tools=tools_description,
             tool_choice="auto",

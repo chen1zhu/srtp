@@ -2,7 +2,8 @@
 export interface Message {
   id: string;
   content: string;
-  role: 'user' | 'assistant';
+  // 新增 'tool_calls'：用于在最终回答前插入一次性工具调用链快照消息
+  role: 'user' | 'assistant' | 'tool_calls';
   timestamp: Date;
   generatedFiles?: string[];
 }

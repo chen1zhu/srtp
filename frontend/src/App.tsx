@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import ConversationSidebar from './components/ConversationSidebar';
@@ -19,6 +19,11 @@ function App() {
   const [streamEvents, setStreamEvents] = useState<StreamEvent[]>([]);
   const [toolCalls, setToolCalls] = useState<ToolCallStateItem[]>([]);
   const eventBufferRef = useRef('');
+  // 记录当前轮是否已经插入过工具调用快照，避免重复
+  const toolSnapshotInsertedRef = useRef(false);
+  // 追踪最新 toolCalls 的 ref，供事件回调使用
+  const toolCallsRef = useRef<ToolCallStateItem[]>([]);
+  useEffect(() => { toolCallsRef.current = toolCalls; }, [toolCalls]);
 
   const {
     conversations,
@@ -36,6 +41,7 @@ function App() {
     setStreamEvents([]);
     setToolCalls([]);
     eventBufferRef.current = '';
+  toolSnapshotInsertedRef.current = false;
   };
 
   const handleSend = async () => {
@@ -104,7 +110,7 @@ function App() {
             mode: 'cors',
             body: requestBody,
         });
-        if (!response.ok || !response.body) {
+  if (!response.ok || !response.body) {
           // 回退到普通模式
           addMessageToConversation(convIdForThisSend, {
             id: crypto.randomUUID(),
@@ -152,6 +158,26 @@ function App() {
                     } else if (ev.event === 'tool_result') {
                       setToolCalls(prev => prev.map(c => c.id === dataObj.tool_call_id ? { ...c, status: dataObj.error ? 'error' : 'success', result: dataObj.result, error: dataObj.error, finishedAt: Date.now() } : c));
                     } else if (ev.event === 'final_answer') {
+                      // 仅首次插入工具调用快照
+                      if (!toolSnapshotInsertedRef.current && toolCallsRef.current.length > 0) {
+                        const snapshot = toolCallsRef.current.map(c => ({
+                          id: c.id,
+                          name: c.name,
+                          status: c.status,
+                          arguments: c.arguments,
+                          result: c.result,
+                          error: c.error,
+                          startedAt: c.startedAt,
+                          finishedAt: c.finishedAt,
+                        }));
+                        addMessageToConversation(convIdForThisSend, {
+                          id: crypto.randomUUID(),
+                          role: 'tool_calls',
+                          timestamp: new Date(),
+                          content: JSON.stringify({ toolCalls: snapshot, finalAnswerPreview: dataObj.content?.slice(0,120) || '' })
+                        }, false);
+                        toolSnapshotInsertedRef.current = true;
+                      }
                       // 最终回答落入消息
                       updateConversationMeta(convIdForThisSend, { requiresFollowUp: dataObj.requires_follow_up });
                       setRequiresFollowUp(dataObj.requires_follow_up);
