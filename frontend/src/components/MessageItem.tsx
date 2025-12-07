@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { Button } from 'antd';
 import { DownloadOutlined, FolderOpenOutlined } from '@ant-design/icons';
@@ -93,6 +94,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
         ) : (
           <div className="prose prose-sm max-w-none">
             <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeHighlight]}
               components={{
                 // 自定义样式组件
