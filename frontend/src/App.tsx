@@ -318,8 +318,14 @@ function App() {
       token: {
         colorBgLayout: '#a99572ff',
         colorBgContainer: '#e7eaebff',
-        colorBorder: '#ea6636ff',
+        colorBorder: '#d536eaff',
         borderRadiusLG: 12,
+        lineWidth:2.5,
+      },
+      components:{
+        Button:{
+          lineWidth:2.5,
+        },
       },
     }}>
       <div className="h-screen flex">
@@ -404,8 +410,7 @@ function App() {
             setSelectedFile={setSelectedFile}
             requiresFollowUp={requiresFollowUp}
           />
-          {/* 可选：底部显示是否流式模式的切换（简单占位） */}
-          <div className="text-[10px] text-gray-400 text-center pb-1 select-none">模式: {useStream ? '流式' : '普通'}（可在代码中修改 useStream）</div>
+
         </div>
       </div>
     </ConfigProvider>
