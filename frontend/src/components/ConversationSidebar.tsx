@@ -1,15 +1,17 @@
-import React, { useState } from 'react';
-import { Button, Drawer, List, Typography, Popconfirm, Avatar, Dropdown, Input } from 'antd';
+import React, { useContext, useRef, useState } from 'react';
+import { Button, Drawer, List, Typography, Popconfirm, Avatar, Input, Modal, Form, Divider, Space, message as antdMessage } from 'antd';
 import { 
   MenuOutlined, 
   PlusOutlined, 
   MessageOutlined, 
   DeleteOutlined,
   UserOutlined,
-  SettingOutlined,
-  InfoCircleOutlined
+  LogoutOutlined,
+  LockOutlined,
+  CameraOutlined
 } from '@ant-design/icons';
 import type { Conversation } from '../types';
+import { API_BASE_URL, AuthContext } from '../context/AuthContext';
 
 const { Text } = Typography;
 
@@ -34,8 +36,14 @@ const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
   onDeleteConversation,
   onRenameConversation,
 }) => {
+  const { user, logout, updateAvatar, changePassword } = useContext(AuthContext);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
+  const [profileVisible, setProfileVisible] = useState(false);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [passwordForm] = Form.useForm();
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const formatDate = (date: Date) => {
     const now = new Date();
@@ -53,12 +61,6 @@ const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
     }
   };
 
-  const userMenuItems = [
-    { key: 'profile', icon: <UserOutlined />, label: '开源用户' },
-    { key: 'settings', icon: <SettingOutlined />, label: '偏好设置（仅前端）' },
-    { key: 'about', icon: <InfoCircleOutlined />, label: '关于本项目' },
-  ];
-
   const startEdit = (conv: Conversation) => {
     setEditingId(conv.id);
     setEditingTitle(conv.title);
@@ -73,12 +75,47 @@ const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
     }
   };
 
+  const avatarSrc = user?.avatar_url ? `${API_BASE_URL}${user.avatar_url}` : undefined;
+
+  const handleAvatarSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    setAvatarBusy(true);
+    try {
+      await updateAvatar(file);
+      antdMessage.success('头像已更新');
+    } catch (error: any) {
+      antdMessage.error(error?.message || '头像上传失败');
+    } finally {
+      setAvatarBusy(false);
+      event.target.value = '';
+    }
+  };
+
+  const handlePasswordFinish = async (values: { current_password: string; new_password: string; confirm_password: string }) => {
+    setPasswordBusy(true);
+    try {
+      await changePassword(values.current_password, values.new_password);
+      passwordForm.resetFields();
+      antdMessage.success('密码已修改');
+    } catch (error: any) {
+      antdMessage.error(error?.message || '修改密码失败');
+    } finally {
+      setPasswordBusy(false);
+    }
+  };
+
   const sidebarContent = (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.96) 100%)' }}>
       {/* 头部 */}
-      <div className="p-4 border-b border-gray-200">
+      <div className="p-4 border-b border-gray-200" style={{ background: 'rgba(255,255,255,0.82)', backdropFilter: 'blur(12px)' }}>
         <div className="flex items-center justify-between mb-3">
-          <Text strong className="text-lg">对话记录</Text>
+          <div>
+            <Text strong className="text-lg" style={{ color: '#0f172a' }}>对话记录</Text>
+            <div className="text-xs text-gray-500 mt-1">保留历史会话与当前工作流</div>
+          </div>
           {/* 移除内部关闭按钮，点击遮罩即可关闭 */}
           <Button
             type="text"
@@ -94,6 +131,7 @@ const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
           icon={<PlusOutlined />}
           onClick={onNewConversation}
           className="w-full"
+          style={{ boxShadow: '0 12px 24px rgba(31,111,235,0.16)' }}
         >
           新建对话
         </Button>
@@ -114,11 +152,11 @@ const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
               <List.Item
                 className={`group cursor-pointer transition-colors hover:bg-gray-50 border-b-0 ${
                   conversation.id === activeConversationId 
-                    ? 'bg-blue-50 border-r-2 border-blue-500' 
+                      ? 'bg-blue-50 border-r-2 border-blue-500' 
                     : ''
                 }`}
                 onClick={() => onSelectConversation(conversation.id)}
-                style={{ padding: '12px 16px' }}
+                style={{ padding: '12px 16px', borderRadius: 12, margin: '4px 8px' }}
               >
                 <div className="w-full">
                   <div className="flex items-start justify-between">
@@ -183,20 +221,29 @@ const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         )}
       </div>
 
-      {/* 底部 - 用户身份（仅前端展示） */}
+      {/* 底部 - 用户身份 */}
       <div className="p-4 border-t border-gray-200">
-        <Dropdown
-          menu={{ items: userMenuItems }}
-          trigger={['click']}
-        >
-          <div className="flex items-center cursor-pointer">
-            <Avatar size={36} icon={<UserOutlined />} className="mr-2" />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setProfileVisible(true)}
+            className="flex flex-1 items-center text-left cursor-pointer"
+            style={{ background: '#f8fafc', borderRadius: 16, padding: '10px 12px', border: '1px solid #e5ecf6' }}
+          >
+            <Avatar size={36} src={avatarSrc} icon={<UserOutlined />} className="mr-2" style={{ backgroundColor: '#1f6feb' }} />
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-gray-900 truncate">开源用户</div>
-              <div className="text-xs text-gray-500 truncate">srtp-example@local</div>
+              <div className="text-sm font-medium text-gray-900 truncate">{user?.full_name || user?.username || '未登录用户'}</div>
+              <div className="text-xs text-gray-500 truncate">{user?.email || '未设置邮箱'}</div>
             </div>
-          </div>
-        </Dropdown>
+          </button>
+          <Button
+            type="text"
+            icon={<LogoutOutlined />}
+            onClick={logout}
+            title="退出登录"
+            style={{ color: '#64748b' }}
+          />
+        </div>
       </div>
     </div>
   );
@@ -225,6 +272,77 @@ const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
       >
         {isOpen && sidebarContent}
       </div>
+
+      <Modal
+        title="个人资料"
+        open={profileVisible}
+        onCancel={() => setProfileVisible(false)}
+        footer={null}
+        destroyOnClose
+      >
+        <div className="flex items-center gap-4" style={{ marginBottom: 20 }}>
+          <Avatar size={72} src={avatarSrc} icon={<UserOutlined />} style={{ backgroundColor: '#1f6feb' }} />
+          <div className="min-w-0 flex-1">
+            <div className="text-base font-semibold text-slate-900 truncate">{user?.full_name || user?.username}</div>
+            <div className="text-sm text-slate-500 truncate">{user?.email}</div>
+            <Space style={{ marginTop: 12 }}>
+              <Button
+                icon={<CameraOutlined />}
+                loading={avatarBusy}
+                onClick={() => avatarInputRef.current?.click()}
+              >
+                上传头像
+              </Button>
+              <Button onClick={() => passwordForm.resetFields()}>清空密码表单</Button>
+            </Space>
+          </div>
+        </div>
+
+        <input ref={avatarInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={handleAvatarSelected} />
+
+        <Divider style={{ margin: '16px 0' }} />
+
+        <Form form={passwordForm} layout="vertical" onFinish={handlePasswordFinish}>
+          <Form.Item
+            name="current_password"
+            label="当前密码"
+            rules={[{ required: true, message: '请输入当前密码' }]}
+          >
+            <Input.Password prefix={<LockOutlined />} autoComplete="current-password" />
+          </Form.Item>
+          <Form.Item
+            name="new_password"
+            label="新密码"
+            rules={[
+              { required: true, message: '请输入新密码' },
+              { min: 8, message: '密码至少 8 位' },
+            ]}
+          >
+            <Input.Password prefix={<LockOutlined />} autoComplete="new-password" />
+          </Form.Item>
+          <Form.Item
+            name="confirm_password"
+            label="确认新密码"
+            dependencies={['new_password']}
+            rules={[
+              { required: true, message: '请再次输入新密码' },
+              ({ getFieldValue }) => ({
+                validator(_, value) {
+                  if (!value || getFieldValue('new_password') === value) {
+                    return Promise.resolve();
+                  }
+                  return Promise.reject(new Error('两次输入的新密码不一致'));
+                },
+              }),
+            ]}
+          >
+            <Input.Password prefix={<LockOutlined />} autoComplete="new-password" />
+          </Form.Item>
+          <Button type="primary" htmlType="submit" loading={passwordBusy} block>
+            修改密码
+          </Button>
+        </Form>
+      </Modal>
 
       {/* 移除左上角悬浮切换按钮，避免遮挡标题 */}
     </>

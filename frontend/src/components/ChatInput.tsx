@@ -62,7 +62,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
       : '输入您的分析需求...';
 
   return (
-    <div className="bg-white border-t border-gray-200">
+    <div className="bg-white border-t border-gray-200" style={{ boxShadow: '0 -8px 24px rgba(15,23,42,0.04)' }}>
       {/* 文件选择区域 */}
       {selectedFile && (
         <div className="p-4 pb-0">
@@ -90,7 +90,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
       )}
       
       <div className="p-4">
-        <div className="flex space-x-2">
+        <div className="flex space-x-2" style={{ alignItems: 'stretch' }}>
           {/* 文件上传按钮 */}
           <Upload
             accept=".xlsx,.xls,.csv"
@@ -106,6 +106,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
                 icon={<UploadOutlined />} 
                 disabled={isLoading}
                 size="large"
+                style={{ borderRadius: 12 }}
               />
             </Tooltip>
           </Upload>
@@ -121,6 +122,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
               disabled={isLoading}
               autoSize={{ minRows: 1, maxRows: 6 }}
               className="resize-none"
+              style={{ borderRadius: 14, padding: '10px 14px', boxShadow: 'inset 0 1px 2px rgba(15,23,42,0.03)' }}
             />
           </div>
           
@@ -132,13 +134,14 @@ const ChatInput: React.FC<ChatInputProps> = ({
             icon={<SendOutlined />}
             size="large"
             loading={isLoading}
+            style={{ borderRadius: 12, minWidth: 110, boxShadow: '0 12px 24px rgba(31,111,235,0.18)' }}
           >
             {isLoading ? '发送中' : '发送'}
           </Button>
         </div>
         
         {/* 提示信息 */}
-        <div className="mt-2 text-xs text-gray-500 flex items-center justify-between">
+        <div className="mt-2 text-xs text-gray-500 flex items-center justify-between" style={{ gap: 12 }}>
           <span>
             💡 支持上传Excel(.xlsx, .xls)或CSV文件进行数据分析
           </span>

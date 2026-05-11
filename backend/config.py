@@ -32,3 +32,8 @@ def call_llm_for_section(prompt: str) -> str:
         error_message = f"内容生成失败: {exc}"
         print(f"   - LLM调用失败: {exc}")
         return error_message
+
+# JWT / auth 配置（用于本地开发）
+JWT_SECRET = os.environ.get("JWT_SECRET", "change-me-in-prod-please-set-a-strong-secret-32+")
+JWT_ALGORITHM = os.environ.get("JWT_ALGORITHM", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))

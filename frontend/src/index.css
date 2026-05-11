@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=Noto+Sans+SC:wght@400;500;700&display=swap');
+
 /* 基础样式重置 */
 * {
   box-sizing: border-box;
@@ -6,14 +8,15 @@
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: "Noto Sans SC", Inter, "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont,
+    'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans',
+    'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #f6f7fb;
+  background-color: #f4f7fb;
   height: 100vh;
   overflow: hidden;
+  color: #0f172a;
 }
 
 /* 高级感渐变背景 */
@@ -25,6 +28,12 @@ body {
 
 #root {
   height: 100vh;
+  background: #f4f7fb;
+}
+
+::selection {
+  background: rgba(31, 111, 235, 0.18);
+  color: #0f172a;
 }
 
 /* 工具类 - 类似 Tailwind 的常用样式 */

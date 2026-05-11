@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useContext } from 'react';
 import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import ConversationSidebar from './components/ConversationSidebar';
@@ -7,8 +7,10 @@ import ChatInput from './components/ChatInput';
 import { useConversations } from './hooks/useConversations';
 import type { ChatResponse, StreamEvent, ToolCallStateItem } from './types';
 import ToolCallPanel from './components/ToolCallPanel';
+import { API_BASE_URL, AuthProvider, AuthContext } from './context/AuthContext';
+import Login from './pages/Login';
 
-function App() {
+function AppInner() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -36,6 +38,13 @@ function App() {
     switchToConversation,
     getConversationById,
   } = useConversations();
+
+  const { user, loading } = useContext(AuthContext);
+
+  if (loading) return null;
+  if (!user) {
+    return <Login />;
+  }
 
   const resetStreamingState = () => {
     setStreamEvents([]);
@@ -75,9 +84,9 @@ function App() {
 
       // 判断是开始新对话还是继续对话（用serverId而不是本地id）
       if (!activeConv || !activeConv.serverId) {
-        url = 'http://localhost:8000/chat/start';
+        url = `${API_BASE_URL}/chat/start`;
       } else {
-        url = `http://localhost:8000/chat/continue/${activeConv.serverId}`;
+        url = `${API_BASE_URL}/chat/continue/${activeConv.serverId}`;
       }
 
       // 如果有文件，使用 FormData
@@ -102,8 +111,8 @@ function App() {
         resetStreamingState();
         // 替换为流式端点
         const streamUrl = (!activeConv || !activeConv.serverId)
-          ? 'http://localhost:8000/chat/stream/start'
-          : `http://localhost:8000/chat/stream/continue/${activeConv.serverId}`;
+          ? `${API_BASE_URL}/chat/stream/start`
+          : `${API_BASE_URL}/chat/stream/continue/${activeConv.serverId}`;
         const response = await fetch(streamUrl, {
           method: 'POST',
             headers,
@@ -186,7 +195,7 @@ function App() {
                         content: dataObj.content,
                         role: 'assistant',
                         timestamp: new Date(),
-                        generatedFiles: (dataObj.generated_files || []).map((f: string) => `http://localhost:8000/outputs/${f}`)
+                          generatedFiles: (dataObj.generated_files || []).map((f: string) => `${API_BASE_URL}/outputs/${f}`)
                       }, false);
                       setSelectedFile(null);
                     }
@@ -316,19 +325,28 @@ function App() {
   return (
     <ConfigProvider locale={zhCN} theme={{
       token: {
-        colorBgLayout: '#a99572ff',
-        colorBgContainer: '#e7eaebff',
-        colorBorder: '#d536eaff',
-        borderRadiusLG: 12,
-        lineWidth:2.5,
+        colorPrimary: '#1f6feb',
+        colorInfo: '#0f766e',
+        colorBgLayout: '#f4f7fb',
+        colorBgContainer: '#ffffff',
+        colorBorder: '#dde5ef',
+        borderRadiusLG: 16,
+        fontFamily: 'Inter, "PingFang SC", "Microsoft YaHei", sans-serif',
+        lineWidth: 1.5,
       },
       components:{
         Button:{
-          lineWidth:2.5,
+          borderRadius: 10,
+        },
+        Card: {
+          borderRadiusLG: 20,
+        },
+        Input: {
+          borderRadius: 12,
         },
       },
     }}>
-      <div className="h-screen flex">
+      <div className="h-screen flex app-gradient">
         {/* 侧边栏 */}
         <ConversationSidebar
           isOpen={isSidebarOpen}
@@ -417,4 +435,10 @@ function App() {
   );
 }
 
-export default App;
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppInner />
+    </AuthProvider>
+  );
+}
