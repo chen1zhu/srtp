@@ -87,7 +87,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
 
   return (
     <div className={`flex ${message.role === 'user' ? 'justify-end pr-2' : 'justify-start pl-2'} mb-3`}>
-      <div className={`max-w-[85%] ${message.role === 'user' ? 'bg-blue-500 text-white rounded-2xl rounded-br-sm' : 'bg-white text-gray-900 border border-gray-200 rounded-2xl rounded-bl-sm shadow-sm'} px-4 py-3`}>
+      <div className={`max-w-[85%] ${message.role === 'user' ? 'bg-blue-500 text-white rounded-2xl rounded-br-sm' : 'bg-white text-gray-900 border border-gray-200 rounded-2xl rounded-bl-sm shadow-sm'} px-4 py-3`} style={{ boxShadow: message.role === 'user' ? '0 12px 28px rgba(31,111,235,0.16)' : '0 10px 24px rgba(15,23,42,0.05)' }}>
         {/* 消息内容 */}
         {message.role === 'user' ? (
           <p className="text-sm whitespace-pre-wrap leading-tight" style={{ margin: 0 }}>{message.content}</p>
@@ -255,7 +255,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
         )}
         
         {/* 时间戳 */}
-        <p className={`text-xs mt-1 ${message.role === 'user' ? 'text-blue-100' : 'text-gray-400'}`} style={{ margin: '4px 0 0 0' }}>
+        <p className={`text-xs mt-1 ${message.role === 'user' ? 'text-blue-100' : 'text-gray-400'}`} style={{ margin: '4px 0 0 0', letterSpacing: '0.01em' }}>
           {message.timestamp.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
         </p>
       </div>

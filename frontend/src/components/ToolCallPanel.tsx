@@ -24,8 +24,8 @@ const ToolCallPanel: React.FC<ToolCallPanelProps> = ({ events, toolCalls, isStre
     : finalEvent ? '工具调用完成 ✅' : '工具调用记录';
 
   return (
-    <div className="w-full border border-gray-300 rounded-lg bg-white shadow-sm overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-100 cursor-pointer" onClick={toggle}>
+    <div className="w-full border border-gray-300 rounded-lg bg-white shadow-sm overflow-hidden" style={{ boxShadow: '0 10px 24px rgba(15,23,42,0.05)' }}>
+      <div className="flex items-center justify-between px-4 py-2 bg-gray-100 cursor-pointer" onClick={toggle} style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%)' }}>
         <div className="text-sm font-medium text-gray-700 flex items-center gap-2">
           <span>🛠️ 工具调用链</span>
           <span className={`text-xs px-2 py-0.5 rounded-full ${isStreaming ? 'bg-blue-500 text-white animate-pulse' : 'bg-green-500 text-white'}`}>{headerStatus}</span>
@@ -33,7 +33,7 @@ const ToolCallPanel: React.FC<ToolCallPanelProps> = ({ events, toolCalls, isStre
           {internalCollapsed ? '展开 ▾' : '收起 ▴'}
       </div>
       {!internalCollapsed && (
-        <div className="max-h-96 overflow-y-auto p-4 space-y-4 text-xs leading-relaxed">
+        <div className="max-h-96 overflow-y-auto p-4 space-y-4 text-xs leading-relaxed" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(248,250,252,0.98) 100%)' }}>
           {toolCalls.length === 0 && (
             <p className="text-gray-500">暂无工具调用计划。</p>
           )}

@@ -14,8 +14,24 @@ import json
 
 logger = logging.getLogger(__name__)
 
+
+def _load_cors_origins() -> list[str]:
+    raw_origins = os.environ.get("CORS_ORIGINS")
+    if raw_origins:
+        origins = [origin.strip() for origin in raw_origins.split(",") if origin.strip()]
+        if origins:
+            return origins
+    return [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+    ]
+
 # 从我们的代理脚本中导入核心功能
 from .deepseek_agent import run_agent_conversation, run_agent_conversation_stream
+# 认证路由
+from .auth import router as auth_router
 
 app = FastAPI(
     title="Conversational Geo-Analysis AI Agent API",
@@ -23,10 +39,13 @@ app = FastAPI(
     version="1.1.0",
 )
 
+# 注册认证路由 (/auth/*)
+app.include_router(auth_router, prefix="/auth")
+
 # 配置CORS中间件，允许跨域请求
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 允许所有源，生产环境建议限制为特定域名
+    allow_origins=_load_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],  # 允许所有HTTP方法
     allow_headers=["*"],  # 允许所有请求头
